@@ -6,10 +6,31 @@
 <link rel="stylesheet" href="css/base.css" />
 <link rel="stylesheet" href="css/layout.css" />
 <link rel="stylesheet" href="css/controls.css" />
+<link rel="stylesheet" href="css/audiogram.css" />
 <style>
-  body { font-family: system-ui, sans-serif; }
-  .page { max-width: 1200px; margin: 1.5rem auto; padding: 0 1rem; }
-  video { width: 100%; max-width: 480px; background: #000; display: block; }
+  body { font-family: system-ui, sans-serif; margin: 0; }
+  .page { max-width: none; margin: 0; padding: 0; }
+  .content-pad { padding: 0 12px; }
+  video { width: 100%; background: #000; display: block; }
+  /* Video and audiogram are a fixed-size pair, centered as a group so the
+     leftover width (now that the audiogram is capped at 1.25x its own
+     height rather than stretching to fill the panel) reads as even
+     padding on both sides instead of piling up on one. */
+  .chart-video-row { display: flex; flex-wrap: nowrap; align-items: flex-start; justify-content: space-evenly; margin-bottom: 0.75rem; }
+  .chart-video-row__video { flex: 0 1 360px; min-width: 260px; max-width: 360px; }
+  .chart-video-row__audiogram { flex: 0 1 450px; min-width: 0; }
+  .audiogram-canvas-wrap { width: 100%; max-width: 450px; height: 360px; }
+  .audiogram-canvas-wrap canvas { width: 100%; height: 100%; display: block; background: var(--color-panel, #fff); border: 1px solid var(--color-border, #d8dadf); border-radius: 8px; }
+  .phase-toggle-row { display: flex; align-items: center; gap: 0.6rem; margin: 0.75rem 0; }
+  .phase-toggle-row .toggle-group button { padding: 0.5rem 1.1rem; }
+  .state-toggle-btn { font-size: 0.85rem; }
+  .student-state-panel { margin: 0.75rem 0; padding: 1rem; border: 1px solid #d8dadf; border-radius: 8px; background: #fbfbfb; }
+  .student-state-panel[hidden] { display: none; }
+  .student-state-panel__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem 1.5rem; }
+  .student-state-panel__item { display: flex; flex-direction: column; gap: 0.15rem; }
+  .student-state-panel__label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; color: #666; }
+  .student-state-panel__value { font-size: 1.2rem; font-weight: 700; }
+  .student-state-panel__value.flag-on { color: #b30000; }
   .onset-flash { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 4px; background: #ddd; margin-left: 0.5rem; }
   .onset-flash.on { background: #ffd54f; }
   .top-controls { display: flex; gap: 0.5rem; align-items: center; margin: 0.75rem 0; flex-wrap: wrap; }
@@ -18,6 +39,11 @@
   button { padding: 0.4rem 0.8rem; }
   h2 { margin-top: 1.5rem; }
   .audiometer-wrap { margin: 1rem 0; }
+  .keyboard-shortcuts-hint { font-size: 0.75rem; color: #555; }
+  .keyboard-shortcuts-hint summary { cursor: pointer; font-weight: 600; }
+  .keyboard-shortcuts-hint ul { margin: 0.4rem 0 0; padding-left: 1.1rem; }
+  .keyboard-shortcuts-hint li { margin-bottom: 0.2rem; }
+  .keyboard-shortcuts-hint kbd { font-family: monospace; background: #eee; border: 1px solid #ccc; border-radius: 3px; padding: 0 0.3rem; }
   .judgement-panel { margin: 1rem 0; padding: 1rem; border: 1px solid #d8dadf; border-radius: 8px; background: #fff; min-height: 4.5rem; }
   .judgement-panel[hidden] { display: none; }
   .judgement-panel__prompt { font-weight: 600; margin-bottom: 0.6rem; }
@@ -41,25 +67,20 @@
 </head>
 <body>
 <div class="page">
-  <h1>Trial runner (childModel + audiometer controls)</h1>
+  <div class="content-pad">
+    <h1>Trial runner (childModel + audiometer controls)</h1>
 
-  <div class="top-controls">
-    <label>Case:
-      <select id="caseSelect"></select>
-    </label>
-    <label>Strategy:
-      <select id="strategySelect"></select>
-    </label>
-    <button id="resetBtn">Reset state</button>
+    <div class="top-controls">
+      <label>Case:
+        <select id="caseSelect"></select>
+      </label>
+      <label>Strategy:
+        <select id="strategySelect"></select>
+      </label>
+      <button id="resetBtn">Reset state</button>
+    </div>
   </div>
 
-  <video id="video" autoplay muted playsinline></video>
-  <div class="top-controls">
-    <span>Stimulus onset: <span id="onsetFlash" class="onset-flash">—</span></span>
-    <span id="elapsedReadout"></span>
-  </div>
-
-  <h2>Audiometer</h2>
   <div class="audiometer-wrap">
     <div class="app">
       <div class="display-bar">
@@ -116,12 +137,74 @@
           <button id="present-btn" class="present-btn">Present</button>
         </div>
 
+        <details class="keyboard-shortcuts-hint" style="grid-row: r6;">
+          <summary>Keyboard shortcuts</summary>
+          <ul>
+            <li><kbd>Space</kbd> hold to present</li>
+            <li><kbd>&uarr;</kbd>/<kbd>&darr;</kbd> level</li>
+            <li><kbd>&larr;</kbd>/<kbd>&rarr;</kbd> frequency</li>
+            <li><kbd>Shift</kbd>+<kbd>&uarr;</kbd>/<kbd>&darr;</kbd> masking level</li>
+            <li><kbd>M</kbd> toggle masking</li>
+            <li><kbd>S</kbd> store</li>
+            <li><kbd>Delete</kbd> delete point</li>
+          </ul>
+        </details>
+
         <div class="sound-status" id="sound-status-flag" style="grid-row: r8;">Sound: ON · Up=Louder</div>
       </div>
 
       <div class="chart-panel panel">
-        <h3>Stored thresholds</h3>
-        <div class="stored-points-list" id="stored-points-list"></div>
+        <div class="chart-video-row">
+          <div class="chart-video-row__video">
+            <video id="video" autoplay muted playsinline></video>
+            <div class="top-controls">
+              <span>Onset: <span id="onsetFlash" class="onset-flash">—</span></span>
+              <span id="elapsedReadout"></span>
+            </div>
+          </div>
+          <div class="chart-video-row__audiogram">
+            <div class="audiogram-canvas-wrap">
+              <canvas id="audiogram-canvas"></canvas>
+            </div>
+            <details class="legend-details">
+              <summary>Symbol Key</summary>
+              <div class="legend">
+                <div class="legend__item"><span style="color:#d21f1f">○</span> AC-R unmasked</div>
+                <div class="legend__item"><span style="color:#1f5fd2">X</span> AC-L unmasked</div>
+                <div class="legend__item"><span style="color:#d21f1f">●</span> AC-R masked</div>
+                <div class="legend__item"><span style="color:#1f5fd2">⤬</span> AC-L masked</div>
+                <div class="legend__item"><span style="color:#d21f1f">&lt;</span> BC-R unmasked</div>
+                <div class="legend__item"><span style="color:#1f5fd2">&gt;</span> BC-L unmasked</div>
+                <div class="legend__item"><span style="color:#d21f1f">◁</span> BC-R masked</div>
+                <div class="legend__item"><span style="color:#1f5fd2">▷</span> BC-L masked</div>
+                <div class="legend__item">↓ No response</div>
+              </div>
+            </details>
+          </div>
+        </div>
+
+        <div class="phase-toggle-row">
+          <span class="field-label">Phase</span>
+          <div class="toggle-group primary-toggle" role="group" aria-label="Session phase" id="phase-toggle">
+            <button data-phase="conditioning">Conditioning</button>
+            <button data-phase="testing">Testing</button>
+          </div>
+        </div>
+
+        <div class="judgement-panel" id="judgement-panel" hidden>
+          <div class="judgement-panel__prompt" id="judgement-prompt">Was that a genuine response?</div>
+          <div class="judgement-panel__buttons" id="judgement-buttons">
+            <button class="judgement-btn accept" id="accept-btn">Accept</button>
+            <button class="judgement-btn not-accept" id="not-accept-btn">Not accept</button>
+          </div>
+          <div class="judgement-panel__buttons" id="action-buttons" hidden>
+            <button class="judgement-btn reinforce" id="reinforce-btn">Reinforce</button>
+            <button class="judgement-btn reinstruct" id="reinstruct-btn">Re-instruct</button>
+            <button class="judgement-btn withhold" id="withhold-btn" title="No reward, no guidance" aria-label="Withhold — no reward, no guidance">Withhold</button>
+          </div>
+          <div class="feedback-flash" id="feedback-flash"></div>
+        </div>
+
         <div class="row chart-response-row">
           <button id="no-response-btn" class="touch-target">No Response</button>
           <button id="store-btn" class="touch-target">Store (S)</button>
@@ -180,48 +263,65 @@
         <button id="direction-switch" class="switch-btn" type="button" aria-pressed="true">Up = Louder</button>
         <button id="sound-switch" class="switch-btn" type="button" aria-pressed="true">Tone: On</button>
         <button id="hints-switch" class="switch-btn" type="button" aria-pressed="true">Hints: On</button>
+        <button id="toggle-state-panel-btn" class="switch-btn state-toggle-btn" type="button" aria-pressed="false">👁 Show state panel</button>
       </div>
     </div>
   </div>
 
-  <h2>Student judgement</h2>
-  <div class="judgement-panel" id="judgement-panel" hidden>
-    <div class="judgement-panel__prompt" id="judgement-prompt">Was that a genuine response?</div>
-    <div class="judgement-panel__buttons" id="judgement-buttons">
-      <button class="judgement-btn accept" id="accept-btn">Accept</button>
-      <button class="judgement-btn not-accept" id="not-accept-btn">Not accept</button>
+  <div class="content-pad">
+    <div class="student-state-panel" id="student-state-panel" hidden>
+      <div class="student-state-panel__grid">
+        <div class="student-state-panel__item">
+          <span class="student-state-panel__label">Conditioning level</span>
+          <span class="student-state-panel__value" id="state-conditioning">—</span>
+        </div>
+        <div class="student-state-panel__item">
+          <span class="student-state-panel__label">Engagement level</span>
+          <span class="student-state-panel__value" id="state-engagement">—</span>
+        </div>
+        <div class="student-state-panel__item">
+          <span class="student-state-panel__label">Fatigue level</span>
+          <span class="student-state-panel__value" id="state-fatigue">—</span>
+        </div>
+        <div class="student-state-panel__item">
+          <span class="student-state-panel__label">False positive ratio</span>
+          <span class="student-state-panel__value" id="state-fp-ratio">—</span>
+        </div>
+        <div class="student-state-panel__item">
+          <span class="student-state-panel__label">Active game</span>
+          <span class="student-state-panel__value" id="state-active-game">—</span>
+        </div>
+        <div class="student-state-panel__item">
+          <span class="student-state-panel__label">Unconditioned?</span>
+          <span class="student-state-panel__value" id="state-unconditioned">—</span>
+        </div>
+      </div>
     </div>
-    <div class="judgement-panel__buttons" id="action-buttons" hidden>
-      <button class="judgement-btn reinforce" id="reinforce-btn">Reinforce</button>
-      <button class="judgement-btn reinstruct" id="reinstruct-btn">Re-instruct</button>
-      <button class="judgement-btn withhold" id="withhold-btn" title="No reward, no guidance" aria-label="Withhold — no reward, no guidance">Withhold</button>
+
+    <h2>Session log</h2>
+    <div style="overflow-x: auto;">
+      <table class="session-log">
+        <thead>
+          <tr><th>#</th><th>Outcome</th><th>Judgement</th><th>Action</th><th>Correct?</th></tr>
+        </thead>
+        <tbody id="session-log-body"></tbody>
+      </table>
     </div>
-    <div class="feedback-flash" id="feedback-flash"></div>
+
+    <h2>Batch run (no video, logic only)</h2>
+    <div class="top-controls">
+      <label>N trials:
+        <input id="nInput" type="number" value="250" step="10" min="1" />
+      </label>
+      <button id="runBatchBtn">Run N trials</button>
+    </div>
+
+    <h2>State</h2>
+    <div id="readout" class="readout">loading…</div>
+
+    <h2>Trial log (most recent last, capped at 200 rows)</h2>
+    <div id="log" class="log"></div>
   </div>
-
-  <h2>Session log</h2>
-  <div style="overflow-x: auto;">
-    <table class="session-log">
-      <thead>
-        <tr><th>#</th><th>Outcome</th><th>Judgement</th><th>Action</th><th>Correct?</th></tr>
-      </thead>
-      <tbody id="session-log-body"></tbody>
-    </table>
-  </div>
-
-  <h2>Batch run (no video, logic only)</h2>
-  <div class="top-controls">
-    <label>N trials:
-      <input id="nInput" type="number" value="250" step="10" min="1" />
-    </label>
-    <button id="runBatchBtn">Run N trials</button>
-  </div>
-
-  <h2>State</h2>
-  <div id="readout" class="readout">loading…</div>
-
-  <h2>Trial log (most recent last, capped at 200 rows)</h2>
-  <div id="log" class="log"></div>
 
   <script src="childModel.js"></script>
   <script src="scheduler.js"></script>
@@ -232,6 +332,8 @@
   <script src="js/tone-player.js"></script>
   <script src="js/noise-player.js"></script>
   <script src="js/audiometer-engine.js"></script>
+  <script src="js/audiogram-chart.js"></script>
+  <script src="js/keyboard-shortcuts.js"></script>
   <script src="js/ui-controls.js"></script>
   <script>
     const FREQS = window.PtaUtils.FREQUENCIES; // [500, 1000, 2000, 4000] — matches childModel's case data
@@ -354,6 +456,7 @@
     // Student judgement UI state
     // ------------------------------------------------------------------
     const judgementPanel = document.getElementById('judgement-panel');
+    const judgementPrompt = document.getElementById('judgement-prompt');
     const judgementButtons = document.getElementById('judgement-buttons');
     const actionButtons = document.getElementById('action-buttons');
     const acceptBtn = document.getElementById('accept-btn');
@@ -371,11 +474,72 @@
     let lastReinstructPhrase = null;
     let sessionLogRows = 0;
 
+    // ------------------------------------------------------------------
+    // Phase toggle (conditioning <-> testing)
+    // ------------------------------------------------------------------
+    const phaseToggleButtons = [...document.querySelectorAll('#phase-toggle [data-phase]')];
+
+    function refreshPhaseToggle() {
+      phaseToggleButtons.forEach((btn) => {
+        btn.setAttribute('aria-pressed', String(btn.dataset.phase === state.phase));
+      });
+    }
+
+    function setPhase(phase) {
+      if (!state || state.phase === phase) return;
+      // Instant and safe: only the phase flag changes here — no other
+      // childModel state (conditioningLevel, engagement, fatigue, session
+      // log, stored points) is touched.
+      state.phase = phase;
+      refreshPhaseToggle();
+      updateReadout();
+    }
+
+    phaseToggleButtons.forEach((btn) => {
+      btn.addEventListener('click', () => setPhase(btn.dataset.phase));
+    });
+
+    // ------------------------------------------------------------------
+    // Student-facing state panel (default hidden — see toggle button)
+    // ------------------------------------------------------------------
+    const toggleStatePanelBtn = document.getElementById('toggle-state-panel-btn');
+    const studentStatePanel = document.getElementById('student-state-panel');
+    const stateConditioningEl = document.getElementById('state-conditioning');
+    const stateEngagementEl = document.getElementById('state-engagement');
+    const stateFatigueEl = document.getElementById('state-fatigue');
+    const stateFpRatioEl = document.getElementById('state-fp-ratio');
+    const stateActiveGameEl = document.getElementById('state-active-game');
+    const stateUnconditionedEl = document.getElementById('state-unconditioned');
+
+    toggleStatePanelBtn.addEventListener('click', () => {
+      const showing = !studentStatePanel.hidden;
+      studentStatePanel.hidden = showing;
+      toggleStatePanelBtn.setAttribute('aria-pressed', String(!showing));
+      toggleStatePanelBtn.textContent = showing ? '👁 Show state panel' : '🙈 Hide state panel';
+    });
+
+    function updateStatePanel() {
+      const g = state.games[activeGame];
+      stateConditioningEl.textContent = g.conditioningLevel.toFixed(1);
+      stateEngagementEl.textContent = state.engagementLevel.toFixed(1);
+      stateFatigueEl.textContent = state.fatigueLevel.toFixed(1);
+      stateFpRatioEl.textContent = state.falsePositiveRatio.toFixed(2);
+      stateActiveGameEl.textContent = activeGame;
+      stateUnconditionedEl.textContent = g.isUnconditioned ? 'Yes' : 'No';
+      stateUnconditionedEl.classList.toggle('flag-on', g.isUnconditioned);
+    }
+
     function setPresentEnabled(enabled) {
       dom.presentBtn.disabled = !enabled;
+      // Switching phase mid-trial (clip playing / judgement pending) would
+      // leave the in-flight trial in a confusing state, so block it the
+      // same way Present itself is blocked — re-enabled the instant the
+      // pending trial resolves.
+      phaseToggleButtons.forEach((btn) => { btn.disabled = !enabled; });
     }
 
     function showJudgementPrompt() {
+      judgementPrompt.hidden = false;
       judgementButtons.hidden = false;
       actionButtons.hidden = true;
       feedbackFlash.textContent = '';
@@ -393,6 +557,7 @@
 
     function hideJudgementPanel() {
       judgementPanel.hidden = true;
+      judgementPrompt.hidden = false;
       judgementButtons.hidden = false;
       actionButtons.hidden = true;
       studentJudgement = null;
@@ -520,7 +685,7 @@
       maskingRequiredFlag: document.getElementById('masking-required-flag'),
       freqPanel: document.getElementById('freq-panel'),
       visualDetails: document.getElementById('visual-details'),
-      storedPointsList: document.getElementById('stored-points-list'),
+      audiogramCanvas: document.getElementById('audiogram-canvas'),
       visual: {
         right: {
           tone: document.getElementById('visual-right-tone'),
@@ -557,7 +722,6 @@
     // student judges the clip, and plays the resulting clip. Blocks further
     // presentations until the pending trial is resolved.
     function presentTrial(freq, ear, cochleaLevel) {
-      maybeEndConditioning();
       maybeSwitchGame();
 
       const { state: afterTrialState, trialResult } = ChildModel.resolveTrial(
@@ -568,22 +732,64 @@
       pendingTrial = { afterTrialState, trialResult, freq, ear };
       setPresentEnabled(false);
 
-      const token = mapOutcomeToToken(trialResult.outcome);
+      // Conditioning phase: always pair the stimulus with reinforcement,
+      // regardless of ground-truth outcome — no judgement is shown or
+      // scored (see autoPairConditioning()). Testing phase plays whichever
+      // clip matches the resolved ground truth, then asks the student to
+      // judge it (showJudgementPrompt()).
+      const isConditioning = afterTrialState.phase === 'conditioning';
+      const token = isConditioning ? 'reinforcer_response' : mapOutcomeToToken(trialResult.outcome);
       const plan = Scheduler.computeSchedulingPlan(manifest, token, trialResult.timingOffsetMs);
+      const onClipFinished = isConditioning ? autoPairConditioning : showJudgementPrompt;
 
       onsetFlash.textContent = '—';
       onsetFlash.classList.remove('on');
       clearTimeout(clipTimer);
       clearTimeout(onsetTimer);
       if (plan.playAtMs <= 0) {
-        playClip(plan, showJudgementPrompt);
+        playClip(plan, onClipFinished);
         onsetTimer = setTimeout(showOnsetMarker, -plan.playAtMs);
       } else {
         showOnsetMarker();
-        clipTimer = setTimeout(() => playClip(plan, showJudgementPrompt), plan.playAtMs);
+        clipTimer = setTimeout(() => playClip(plan, onClipFinished), plan.playAtMs);
       }
 
       return trialResult;
+    }
+
+    // Conditioning phase: skip the Accept/Not-accept judgement entirely and
+    // apply the equivalent of a genuine+reinforce update — childModel.js's
+    // applyStudentAction() already dispatches to applyConditioningPhase()
+    // whenever state.phase === 'conditioning' regardless of the action
+    // argument, so this reuses exactly the same conditioning-gain logic
+    // step()/stepFromCochleaLevel() use, just entered via resolveTrial()
+    // first so the clip could be shown before applying it.
+    function autoPairConditioning() {
+      if (!pendingTrial) return;
+      const { afterTrialState, trialResult } = pendingTrial;
+
+      const iconType = randomIcon();
+      lastReinforceIcon = Phrases.pickNoRepeat(Phrases.reinforce.icons, lastReinforceIcon);
+      lastReinforcePhrase = Phrases.pickNoRepeat(Phrases.reinforce.phrases, lastReinforcePhrase);
+      judgementPanel.hidden = false;
+      judgementPrompt.hidden = true;
+      judgementButtons.hidden = true;
+      actionButtons.hidden = true;
+      showFeedback(lastReinforceIcon, lastReinforcePhrase);
+
+      const { state: newState, historyEntry } = ChildModel.applyStudentAction(
+        afterTrialState,
+        trialResult,
+        activeGame,
+        null,
+        iconType
+      );
+      state = newState;
+      logTrial(historyEntry);
+      updateReadout();
+
+      pendingTrial = null;
+      setPresentEnabled(true);
     }
 
     let uiControls = null;
@@ -591,16 +797,14 @@
     function resetState() {
       const caseConfig = SampleCases[caseSelect.value];
       state = ChildModel.createChildState(caseConfig);
-      // This step assumes the testing phase throughout (conditioning
-      // phase's auto-reinforce flow is separate, out-of-scope work) —
-      // force it regardless of the case config's startingPhase.
-      state.phase = 'testing';
       activeGame = ModelConfig.games[0];
       gameIdx = 0;
       trialCount = 0;
       logEl.textContent = '';
+      refreshPhaseToggle();
       updateReadout();
       if (uiControls) uiControls.refreshDisplayBar();
+      if (engine) engine.clearStoredPoints();
 
       pendingTrial = null;
       studentJudgement = null;
@@ -643,6 +847,7 @@
         `falsePositiveRatio: ${state.falsePositiveRatio.toFixed(2)}\n` +
         `isUnconditioned:    ${g.isUnconditioned}\n` +
         `responseBudget:     ${state.responseBudget}`;
+      updateStatePanel();
     }
 
     function maybeSwitchGame() {

@@ -309,19 +309,6 @@
   flex-wrap: wrap;
 }
 
-.stored-points-list {
-  font-family: monospace;
-  font-size: 0.8rem;
-  white-space: pre;
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  padding: 8px;
-  min-height: 3em;
-  overflow-y: auto;
-  max-height: 200px;
-}
-
 .visual-table {
   width: 100%;
   border-collapse: collapse;

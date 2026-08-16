@@ -3,9 +3,10 @@
 // Adapted from jakalnz/pta-simulator js/ui-controls.js, de-modularized.
 // Reuses wireUi's DOM wiring, display-bar refresh, and sound/hints toggles
 // as-is. Two changes from the source:
-//   1. No audiogram chart in this step (per brief) — refreshChart() and the
-//      chart-view/canvas wiring are dropped; a plain stored-points list
-//      stands in so Store/No-Response/Delete still have visible feedback.
+//   1. Only a combined-view audiogram (dom.audiogramCanvas) — the source's
+//      combined/split chart-view toggle isn't wired here, so
+//      refreshAudiogram() always draws every stored point onto one canvas
+//      (no separate stored-points text list — the chart is the record).
 //   2. presentTone()'s pass/fail no longer comes from the engine itself.
 //      startPresenting() now calls engine.presentTone() to get the physics
 //      (cochlea levels + overmasked flag), hands that to the caller-supplied
@@ -126,12 +127,11 @@
       });
     }
 
-    function refreshStoredPointsList() {
-      if (!dom.storedPointsList) return;
+    function refreshAudiogram() {
       const points = engine.getStoredPoints();
-      dom.storedPointsList.textContent = points
-        .map((p) => `${cap(p.ear)} ${p.mode}${p.masked ? ' (masked)' : ''} ${formatFreq(p.freq)}: ${p.noResponse ? 'NR' : formatDb(p.level)}`)
-        .join('\n');
+      if (dom.audiogramCanvas && window.AudiogramChart) {
+        window.AudiogramChart.renderAudiogram(dom.audiogramCanvas, points);
+      }
     }
 
     let responseLightTimer = null;
@@ -215,16 +215,16 @@
     function markNoResponse() {
       engine.storeThreshold(true);
       clearResponseLight();
-      refreshStoredPointsList();
+      refreshAudiogram();
     }
     function storeThreshold() {
       engine.storeThreshold(false);
-      refreshStoredPointsList();
+      refreshAudiogram();
     }
     function deletePoint() {
       engine.deleteStoredPoint();
       clearResponseLight();
-      refreshStoredPointsList();
+      refreshAudiogram();
     }
     dom.noResponseBtn.addEventListener('click', markNoResponse);
     dom.storeBtn.addEventListener('click', storeThreshold);
@@ -286,9 +286,25 @@
     setHints(hintsOn);
     engine.onChange(refreshDisplayBar);
     refreshDisplayBar();
-    refreshStoredPointsList();
+    refreshAudiogram();
 
-    return { refreshDisplayBar, refreshStoredPointsList, startPresenting, stopPresenting, setExamMode };
+    // Keyboard shortcuts reuse the exact same handlers as the on-screen
+    // controls (storeThreshold/deletePoint/startPresenting/stopPresenting) —
+    // no separate keyboard-only logic. Space = press-and-hold Present,
+    // arrows = level/frequency, Shift+arrows = masking level, M = toggle
+    // masking, S = Store, Delete = delete the currently-dialled-in point.
+    if (window.KeyboardShortcuts) {
+      window.KeyboardShortcuts.wireKeyboardShortcuts({
+        engine,
+        onStore: storeThreshold,
+        onDelete: deletePoint,
+        onLevelChange: clearResponseLight,
+        onPresentStart: startPresenting,
+        onPresentEnd: stopPresenting,
+      });
+    }
+
+    return { refreshDisplayBar, refreshAudiogram, startPresenting, stopPresenting, setExamMode };
   }
 
   const UiControls = { wireUi };
