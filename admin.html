@@ -37,7 +37,12 @@
   .clip-token-group__note { font-size: 0.75rem; color: #888; }
   .clip-checkbox { display: inline-flex; align-items: center; gap: 0.3rem; margin: 0.2rem 0.8rem 0.2rem 0; font-size: 0.85rem; }
   .actions-row { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; margin-top: 1rem; }
+  .actions-row__note { flex-basis: 100%; font-size: 0.75rem; color: #888; }
+  .actions-row__lock { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; }
   .status-msg { font-size: 0.85rem; color: #1f8a2f; }
+  .status-msg.status-msg--error { color: #b30000; }
+  .locked-note { font-size: 0.8rem; color: #b30000; margin: 0.5rem 0 0; }
+  .locked-note[hidden] { display: none; }
 </style>
 </head>
 <body>
@@ -93,6 +98,7 @@
       <div class="admin-audiogram-wrap">
         <canvas id="admin-audiogram-canvas"></canvas>
       </div>
+      <p class="locked-note" id="locked-note" hidden>This case is locked (answer key hidden) — thresholds are read-only. Uncheck "Lock" below and re-save/share to edit them.</p>
     </section>
 
     <section class="form-block">
@@ -132,6 +138,21 @@
       <button id="preview-btn">Preview this case</button>
       <span class="status-msg" id="admin-status"></span>
     </div>
+
+    <div class="actions-row">
+      <label class="actions-row__lock">
+        <input type="checkbox" id="share-locked-checkbox" />
+        Lock (hide thresholds — for sharing with students)
+      </label>
+      <button id="share-link-btn">Copy share link</button>
+      <button id="share-export-btn">Export shareable .json</button>
+      <span class="status-msg" id="share-status"></span>
+      <p class="actions-row__note">
+        "Save" above writes the raw case file for dropping into <code>cases/</code>.
+        These two write a separate, schema-versioned format meant for
+        sharing/importing via a link or file — not for <code>cases/</code>.
+      </p>
+    </div>
   </div>
 </div>
 
@@ -140,6 +161,10 @@
 <script src="js/audiogram-chart.js"></script>
 <script src="js/case-utils.js"></script>
 <script src="js/case-threshold-editor.js"></script>
+<script src="js/obfuscate.js"></script>
+<script src="js/share-link.js"></script>
+<script src="js/json-io.js"></script>
+<script src="js/case-serializer.js"></script>
 <script>
   'use strict';
 
@@ -228,6 +253,7 @@
     thresholdEditor.render();
     refreshAudiogram();
     renderClipEligibility();
+    applyLockUiState(caseDraft.locked);
   }
 
   function buildGamesSection() {
@@ -321,16 +347,17 @@
     return (name || 'case').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'case';
   }
 
-  function downloadJson(obj, filename) {
-    const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+  // Reflects caseDraft.locked (only ever set on a case loaded from a step-9
+  // share link/import — plain cases/*.json files have no `locked` field, so
+  // this is a no-op for the everyday "Load existing case" path) by disabling
+  // the threshold table so a locked/student-facing case's answer key can't
+  // be edited from a state where the raw numbers were never actually shown.
+  function applyLockUiState(locked) {
+    const note = document.getElementById('locked-note');
+    note.hidden = !locked;
+    document.querySelectorAll('#threshold-table input').forEach((input) => {
+      input.disabled = !!locked;
+    });
   }
 
   async function populateLoadSelect() {
@@ -382,7 +409,7 @@
     document.getElementById('save-btn').addEventListener('click', () => {
       fieldsToDraft();
       const filename = `${slugify(caseDraft.name)}.json`;
-      downloadJson(caseDraft, filename);
+      window.JsonIo.exportJson(caseDraft, filename);
       document.getElementById('admin-status').textContent =
         `Saved ${filename}. Drop it into cases/ and add "${filename}" to cases/index.json for it to appear on the case selection screen.`;
     });
@@ -391,6 +418,41 @@
       fieldsToDraft();
       sessionStorage.setItem('playSimSelectedCase', JSON.stringify(caseDraft));
       window.open('trial-runner.html', '_blank');
+    });
+
+    // ------------------------------------------------------------------
+    // Step 9: share link / shareable .json export — a separate,
+    // schema-versioned format from "Save" above (see the actions-row note
+    // in the markup), optionally locking the answer key (trueThreshold).
+    // ------------------------------------------------------------------
+    const shareStatus = document.getElementById('share-status');
+    const lockedCheckbox = document.getElementById('share-locked-checkbox');
+
+    document.getElementById('share-link-btn').addEventListener('click', async () => {
+      fieldsToDraft();
+      shareStatus.classList.remove('status-msg--error');
+      try {
+        const data = window.CaseSerializer.serializeCase(caseDraft, { locked: lockedCheckbox.checked });
+        const url = window.ShareLink.buildShareUrl('case', data);
+        await navigator.clipboard.writeText(url);
+        shareStatus.textContent = 'Share link copied to clipboard.';
+      } catch (err) {
+        shareStatus.classList.add('status-msg--error');
+        shareStatus.textContent = 'Could not build share link: ' + err.message;
+      }
+    });
+
+    document.getElementById('share-export-btn').addEventListener('click', () => {
+      fieldsToDraft();
+      shareStatus.classList.remove('status-msg--error');
+      try {
+        const data = window.CaseSerializer.serializeCase(caseDraft, { locked: lockedCheckbox.checked });
+        window.JsonIo.exportJson(data, `${slugify(caseDraft.name)}-share.json`);
+        shareStatus.textContent = 'Shareable .json downloaded.';
+      } catch (err) {
+        shareStatus.classList.add('status-msg--error');
+        shareStatus.textContent = 'Could not export: ' + err.message;
+      }
     });
 
     fetch('manifest.json')

@@ -22,6 +22,12 @@
   }
   .empty-state { color: #666; font-style: italic; }
   .admin-link { display: inline-block; margin-top: 2rem; font-size: 0.85rem; color: #666; }
+  .case-card__badge {
+    align-self: flex-start; font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.03em; color: #8a5a00; background: #fff3d6; padding: 0.15rem 0.5rem; border-radius: 4px;
+  }
+  .import-row { margin-top: 1.5rem; display: flex; align-items: center; gap: 0.6rem; }
+  .import-status { font-size: 0.85rem; color: #b30000; }
 </style>
 </head>
 <body>
@@ -31,18 +37,36 @@
   <div class="case-grid" id="case-grid">
     <p class="empty-state">Loading cases…</p>
   </div>
+
+  <div class="import-row">
+    <button id="import-case-btn" type="button">Import case from .json</button>
+    <input type="file" id="import-case-input" accept="application/json" hidden />
+    <span class="import-status" id="import-status"></span>
+  </div>
+
   <a class="admin-link" href="admin.html">Instructor admin →</a>
 </div>
 
 <script src="js/utils.js"></script>
 <script src="js/case-utils.js"></script>
+<script src="js/obfuscate.js"></script>
+<script src="js/share-link.js"></script>
+<script src="js/json-io.js"></script>
+<script src="js/case-serializer.js"></script>
 <script>
   const caseGrid = document.getElementById('case-grid');
 
-  function buildCard(caseConfig, filename) {
+  function buildCard(caseConfig, filename, badgeText) {
     const btn = document.createElement('button');
     btn.className = 'case-card';
     btn.type = 'button';
+
+    if (badgeText) {
+      const badge = document.createElement('div');
+      badge.className = 'case-card__badge';
+      badge.textContent = badgeText;
+      btn.appendChild(badge);
+    }
 
     const name = document.createElement('div');
     name.className = 'case-card__name';
@@ -66,6 +90,31 @@
     });
 
     return btn;
+  }
+
+  // Step 9: renders one extra card for a case that arrived via a share
+  // link or an imported .json file — appended after the local library,
+  // never auto-navigated to, so it can't silently override normal
+  // navigation. Runs findMissingThresholds the same way loadCases() does
+  // for local cases, and computes the difficulty label against the
+  // deobfuscated config (applyCase() already deobfuscates trueThreshold if
+  // it was locked — locking only hides raw numbers from someone reading
+  // the URL/JSON directly, not from the app itself).
+  function renderExternalCard(rawData, badgeText, sourceLabel) {
+    let caseConfig;
+    try {
+      const data = window.CaseSerializer.deserializeCase(rawData);
+      caseConfig = window.CaseSerializer.applyCase(data);
+    } catch (err) {
+      document.getElementById('import-status').textContent =
+        `Could not load ${sourceLabel}: ${err.message}`;
+      return;
+    }
+    const missing = window.CaseUtils.findMissingThresholds(caseConfig);
+    if (missing.length) {
+      console.warn(`${sourceLabel} is missing trueThreshold entries: ${missing.join(', ')}`);
+    }
+    caseGrid.appendChild(buildCard(caseConfig, caseConfig.name || sourceLabel, badgeText));
   }
 
   async function loadCases() {
@@ -94,7 +143,30 @@
     }
   }
 
-  loadCases();
+  loadCases().then(() => {
+    const shared = window.ShareLink.readShareUrl('case');
+    if (shared) {
+      renderExternalCard(shared, 'Shared via link', 'the shared case link');
+    }
+  });
+
+  document.getElementById('import-case-btn').addEventListener('click', () => {
+    document.getElementById('import-case-input').click();
+  });
+
+  document.getElementById('import-case-input').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const statusEl = document.getElementById('import-status');
+    statusEl.textContent = '';
+    try {
+      const raw = await window.JsonIo.importJson(file);
+      renderExternalCard(raw, 'Imported', `"${file.name}"`);
+    } catch (err) {
+      statusEl.textContent = `Could not import "${file.name}": ${err.message}`;
+    }
+    e.target.value = '';
+  });
 </script>
 </body>
 </html>

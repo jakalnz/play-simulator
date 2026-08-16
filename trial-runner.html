@@ -88,7 +88,7 @@
   <div class="content-pad">
     <h1>Trial runner (childModel + audiometer controls)</h1>
 
-    <div class="top-controls">
+    <div class="top-controls" id="main-top-controls">
       <a id="change-case-link" href="index.html" hidden>← Change case</a>
       <label id="case-select-label">Case:
         <select id="caseSelect"></select>
@@ -324,10 +324,13 @@
         <h2 style="margin-top:0;">Session summary</h2>
         <div class="summary-screen__actions">
           <span id="summary-frozen-note" class="summary-screen__frozen-note" hidden>Session ended.</span>
+          <button id="summary-share-link-btn">Copy share link</button>
+          <button id="summary-export-btn">Export .json</button>
           <button id="summary-new-session-btn" hidden>Start New Session</button>
           <button id="summary-close-btn">Close</button>
         </div>
       </div>
+      <div id="summary-share-status" class="summary-screen__frozen-note" style="color:#666; font-weight:400;"></div>
 
       <div class="summary-block">
         <h3>Judgement accuracy</h3>
@@ -396,6 +399,9 @@
   <script src="js/keyboard-shortcuts.js"></script>
   <script src="js/ui-controls.js"></script>
   <script src="js/session-summary.js"></script>
+  <script src="js/share-link.js"></script>
+  <script src="js/json-io.js"></script>
+  <script src="js/results-serializer.js"></script>
   <script>
     const FREQS = window.PtaUtils.FREQUENCIES; // [500, 1000, 2000, 4000] — matches childModel's case data
 
@@ -544,6 +550,20 @@
     const onsetFlash = document.getElementById('onsetFlash');
     const elapsedReadout = document.getElementById('elapsedReadout');
 
+    // ------------------------------------------------------------------
+    // Step 9: a shared/exported results link takes priority over
+    // EVERYTHING else in this file's boot sequence, including step 8's
+    // case handoff just below. sessionStorage's playSimSelectedCase
+    // persists across navigations in the same tab, so someone opening a
+    // #results= link in a tab that still has a case handed off from a
+    // prior session would otherwise have the handoff block below
+    // half-configure the live case-picker chrome underneath what's meant
+    // to be a read-only review page. Computed first, checked again (as
+    // `!resultsShareData`) around the handoff block and around the whole
+    // live-session boot chain at the bottom of this script.
+    // ------------------------------------------------------------------
+    const resultsShareData = window.ShareLink.readShareUrl('results');
+
     caseSelect.innerHTML = Object.keys(SampleCases)
       .map((k) => `<option value="${k}">${k}</option>`)
       .join('');
@@ -559,7 +579,7 @@
     const handoffRaw = sessionStorage.getItem('playSimSelectedCase');
     const handoffCaseConfig = handoffRaw ? JSON.parse(handoffRaw) : null;
 
-    if (handoffCaseConfig) {
+    if (!resultsShareData && handoffCaseConfig) {
       document.getElementById('case-select-label').hidden = true;
       document.getElementById('change-case-link').hidden = false;
     }
@@ -1114,6 +1134,50 @@
     summaryCloseBtn.addEventListener('click', hideSummaryScreen);
     summaryNewSessionBtn.addEventListener('click', resetState);
 
+    // ------------------------------------------------------------------
+    // Step 9: share/export the current session's results. currentCaseConfig
+    // has no `name` on the legacy dropdown path (SampleCases.* configs are
+    // numeric-only — name/vignette only exist on cases/*.json-shaped
+    // configs), so fall back to the dropdown key itself for caseName —
+    // otherwise a session run via the legacy dropdown would share with no
+    // case identity at all.
+    // ------------------------------------------------------------------
+    const summaryShareStatus = document.getElementById('summary-share-status');
+
+    function buildResultsRecord() {
+      const caseConfigForResults = (currentCaseConfig && currentCaseConfig.name)
+        ? currentCaseConfig
+        : { ...currentCaseConfig, name: currentCaseConfig?.name || caseSelect.value };
+      return ResultsSerializer.serializeResults(state.responseHistory, caseConfigForResults);
+    }
+
+    document.getElementById('summary-share-link-btn').addEventListener('click', async () => {
+      try {
+        const data = buildResultsRecord();
+        const url = window.ShareLink.buildShareUrl('results', data);
+        if (url.length > 8000) {
+          summaryShareStatus.textContent =
+            'This session is large — the share link may not work everywhere. "Export .json" is safer for long sessions.';
+        } else {
+          summaryShareStatus.textContent = '';
+        }
+        await navigator.clipboard.writeText(url);
+        summaryShareStatus.textContent += (summaryShareStatus.textContent ? ' ' : '') + 'Share link copied to clipboard.';
+      } catch (err) {
+        summaryShareStatus.textContent = 'Could not build share link: ' + err.message;
+      }
+    });
+
+    document.getElementById('summary-export-btn').addEventListener('click', () => {
+      try {
+        const data = buildResultsRecord();
+        window.JsonIo.exportJson(data, 'session-results.json');
+        summaryShareStatus.textContent = 'Results .json downloaded.';
+      } catch (err) {
+        summaryShareStatus.textContent = 'Could not export: ' + err.message;
+      }
+    });
+
     function tickElapsed() {
       if (stimulusOnsetMs !== null) {
         elapsedReadout.textContent = `elapsed since onset: ${Math.round(performance.now() - stimulusOnsetMs)}ms`;
@@ -1121,19 +1185,58 @@
       requestAnimationFrame(tickElapsed);
     }
 
-    fetch('manifest.json')
-      .then((r) => r.json())
-      .then((m) => {
-        manifest = m;
-        idleLoopUrl = Scheduler.getIdleLoopUrl(manifest);
-        resetState();
-        uiControls = UiControls.wireUi({ engine, patientModel, dom, resolveResponse });
-        playIdleLoop();
-        tickElapsed();
-      })
-      .catch((err) => {
-        readout.textContent = 'Failed to load manifest.json: ' + err.message;
-      });
+    // ------------------------------------------------------------------
+    // Step 9: read-only review of a shared/exported results link. Skips
+    // the entire live-session boot path (no manifest fetch, no
+    // resetState(), no UiControls.wireUi()) — there's nothing to present
+    // or judge on this page, only a past session's summary to display.
+    // ------------------------------------------------------------------
+    function showResultsReviewMode(raw) {
+      let data;
+      try {
+        data = ResultsSerializer.deserializeResults(raw);
+      } catch (err) {
+        readout.textContent = 'Failed to load shared results: ' + err.message;
+        return;
+      }
+
+      document.querySelector('.audiometer-wrap').hidden = true;
+      document.getElementById('main-top-controls').hidden = true;
+
+      const fakeState = { responseHistory: data.responseHistory, trueThreshold: data.trueThreshold || {} };
+      SessionSummary.render({
+        accuracyEl: document.getElementById('summary-accuracy'),
+        actionTableEl: document.getElementById('summary-action-table'),
+        trajectoryEl: document.getElementById('summary-trajectory'),
+        audiogramCanvas: summaryAudiogramCanvas,
+      }, fakeState);
+
+      summaryFrozenNote.hidden = false;
+      summaryFrozenNote.textContent = `Read-only shared results${data.caseName ? ' — ' + data.caseName : ''}.`;
+      summaryNewSessionBtn.hidden = true;
+      summaryCloseBtn.hidden = true;
+      document.getElementById('summary-share-link-btn').hidden = true;
+      document.getElementById('summary-export-btn').hidden = true;
+      summaryScreen.hidden = false;
+    }
+
+    if (resultsShareData) {
+      showResultsReviewMode(resultsShareData);
+    } else {
+      fetch('manifest.json')
+        .then((r) => r.json())
+        .then((m) => {
+          manifest = m;
+          idleLoopUrl = Scheduler.getIdleLoopUrl(manifest);
+          resetState();
+          uiControls = UiControls.wireUi({ engine, patientModel, dom, resolveResponse });
+          playIdleLoop();
+          tickElapsed();
+        })
+        .catch((err) => {
+          readout.textContent = 'Failed to load manifest.json: ' + err.message;
+        });
+    }
   </script>
 </div>
 </body>
