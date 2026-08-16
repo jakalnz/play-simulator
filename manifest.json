@@ -37,6 +37,13 @@
       "offsetRange": null
     },
     {
+      "token": "no_response",
+      "variantId": "no_response_02",
+      "file": "no_response_02.mp4",
+      "durationMs": 2000,
+      "offsetRange": null
+    },
+    {
       "token": "spontaneous_response",
       "variantId": "spontaneous_response_01",
       "file": "spontaneous_response_01.mp4",
