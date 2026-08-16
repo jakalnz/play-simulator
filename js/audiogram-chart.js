@@ -122,6 +122,7 @@
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
     ctx.lineWidth = 2;
+    if (point.reference) ctx.globalAlpha = 0.35;
 
     if (point.mode === 'AC' && !point.masked) {
       if (point.ear === 'right') {
@@ -192,7 +193,7 @@
 
     const byEar = { right: new Map(), left: new Map() };
     points.forEach((p) => {
-      if (p.mode !== 'AC' || p.noResponse) return;
+      if (p.mode !== 'AC' || p.noResponse || p.reference) return;
       const freqIndex = AXIS_FREQUENCIES.indexOf(p.freq);
       if (hardBreaks[p.ear].has(freqIndex)) return;
       const map = byEar[p.ear];

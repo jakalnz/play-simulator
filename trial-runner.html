@@ -63,6 +63,24 @@
   .session-log thead, .session-log tbody tr { display: table; width: 100%; table-layout: fixed; }
   .session-log .correct { color: #1f8a2f; font-weight: 600; }
   .session-log .incorrect { color: #b30000; font-weight: 600; }
+  .summary-screen { border: 1px solid #d8dadf; border-radius: 8px; padding: 1rem 1.25rem; margin: 1rem 0; background: #fff; }
+  .summary-screen[hidden] { display: none; }
+  .summary-screen__header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; }
+  .summary-screen__actions { display: flex; align-items: center; gap: 0.6rem; }
+  .summary-screen__frozen-note { font-weight: 600; color: #b30000; }
+  .summary-block { margin: 1.25rem 0; }
+  .summary-block h3 { margin-bottom: 0.5rem; }
+  .summary-stat-row { display: flex; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+  .summary-stat { display: flex; flex-direction: column; gap: 0.1rem; }
+  .summary-stat__label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; color: #666; }
+  .summary-stat__value { font-size: 1.3rem; font-weight: 700; }
+  .summary-table { border-collapse: collapse; font-size: 0.85rem; }
+  .summary-table th, .summary-table td { border: 1px solid #d8dadf; padding: 0.3rem 0.6rem; text-align: center; }
+  .summary-table td.bad-cell { background: #fdeaea; color: #b30000; font-weight: 600; }
+  .summary-empty { color: #666; font-style: italic; }
+  .sparkline-block { margin-bottom: 0.75rem; }
+  .sparkline-block__label { font-size: 0.8rem; font-weight: 600; margin-bottom: 0.2rem; }
+  .sparkline-block__caption { font-size: 0.75rem; color: #b30000; margin-top: 0.2rem; }
 </style>
 </head>
 <body>
@@ -189,6 +207,8 @@
             <button data-phase="conditioning">Conditioning</button>
             <button data-phase="testing">Testing</button>
           </div>
+          <button id="view-summary-btn" class="touch-target">View Summary</button>
+          <button id="end-session-btn" class="touch-target">End Session</button>
         </div>
 
         <div class="judgement-panel" id="judgement-panel" hidden>
@@ -298,6 +318,44 @@
       </div>
     </div>
 
+    <section id="summary-screen" class="summary-screen" hidden>
+      <div class="summary-screen__header">
+        <h2 style="margin-top:0;">Session summary</h2>
+        <div class="summary-screen__actions">
+          <span id="summary-frozen-note" class="summary-screen__frozen-note" hidden>Session ended.</span>
+          <button id="summary-new-session-btn" hidden>Start New Session</button>
+          <button id="summary-close-btn">Close</button>
+        </div>
+      </div>
+
+      <div class="summary-block">
+        <h3>Judgement accuracy</h3>
+        <div id="summary-accuracy"></div>
+      </div>
+
+      <div class="summary-block">
+        <h3>Action appropriateness</h3>
+        <div id="summary-action-table"></div>
+      </div>
+
+      <div class="summary-block">
+        <h3>Conditioning trajectory</h3>
+        <div id="summary-trajectory"></div>
+      </div>
+
+      <div class="summary-block">
+        <h3>Threshold estimate vs ground truth</h3>
+        <div class="audiogram-canvas-wrap" style="max-width:450px;">
+          <canvas id="summary-audiogram-canvas"></canvas>
+        </div>
+        <div class="legend" id="summary-audiogram-legend">
+          <div class="legend__item"><span style="color:#d21f1f">○</span> AC-R unmasked (recorded)</div>
+          <div class="legend__item"><span style="color:#1f5fd2">X</span> AC-L unmasked (recorded)</div>
+          <div class="legend__item" style="opacity:0.5;">Faint symbol = true threshold (reference)</div>
+        </div>
+      </div>
+    </section>
+
     <h2>Session log</h2>
     <div style="overflow-x: auto;">
       <table class="session-log">
@@ -335,6 +393,7 @@
   <script src="js/audiogram-chart.js"></script>
   <script src="js/keyboard-shortcuts.js"></script>
   <script src="js/ui-controls.js"></script>
+  <script src="js/session-summary.js"></script>
   <script>
     const FREQS = window.PtaUtils.FREQUENCIES; // [500, 1000, 2000, 4000] — matches childModel's case data
 
@@ -467,12 +526,13 @@
     const feedbackFlash = document.getElementById('feedback-flash');
     const sessionLogBody = document.getElementById('session-log-body');
 
-    let pendingTrial = null; // { afterTrialState, trialResult, ear, freq }
+    let pendingTrial = null; // { afterTrialState, trialResult, ear, freq, mode, masked, presentedLevel }
     let studentJudgement = null; // 'accept' | 'not_accept'
     let lastReinforceIcon = null;
     let lastReinforcePhrase = null;
     let lastReinstructPhrase = null;
     let sessionLogRows = 0;
+    let sessionFrozen = false; // UI-level: set by End Session, blocks further trials
 
     // ------------------------------------------------------------------
     // Phase toggle (conditioning <-> testing)
@@ -604,7 +664,7 @@
 
     function chooseAction(action) {
       if (!pendingTrial) return;
-      const { afterTrialState, trialResult } = pendingTrial;
+      const { afterTrialState, trialResult, mode, masked, presentedLevel } = pendingTrial;
 
       let iconType = null;
       if (action === 'reinforce') {
@@ -634,6 +694,11 @@
       const groundTruthGenuine = trialResult.outcome === 'genuine_response';
       const judgementAccepted = studentJudgement === 'accept';
       const isCorrect = judgementAccepted === groundTruthGenuine;
+      historyEntry.judgement = studentJudgement;
+      historyEntry.isCorrect = isCorrect;
+      historyEntry.mode = mode;
+      historyEntry.masked = masked;
+      historyEntry.presentedLevel = presentedLevel;
       addSessionLogRow(historyEntry, studentJudgement, action, isCorrect);
 
       pendingTrial = null;
@@ -712,7 +777,7 @@
     // The chosen *action* is applied later, once the student judges the
     // clip and picks Reinforce/Re-instruct/Withhold — see chooseAction().
     function resolveResponse(physics) {
-      if (physics.overmasked) return { testResponded: false, contraResponded: false };
+      if (sessionFrozen || physics.overmasked) return { testResponded: false, contraResponded: false };
       const trialResult = presentTrial(physics.freq, physics.testEar, physics.testCochleaLevel);
       return { testResponded: trialResult.outcome !== 'no_response', contraResponded: false };
     }
@@ -729,7 +794,16 @@
         { freq, ear, cochleaLevel },
         activeGame
       );
-      pendingTrial = { afterTrialState, trialResult, freq, ear };
+      const engineState = engine.getState();
+      pendingTrial = {
+        afterTrialState,
+        trialResult,
+        freq,
+        ear,
+        mode: engineState.testMode,
+        masked: engineState.maskingOn,
+        presentedLevel: engineState.presentedLevel,
+      };
       setPresentEnabled(false);
 
       // Conditioning phase: always pair the stimulus with reinforcement,
@@ -811,6 +885,8 @@
       hideJudgementPanel();
       feedbackFlash.textContent = '';
       resetSessionLog();
+      sessionFrozen = false;
+      hideSummaryScreen();
       setPresentEnabled(true);
     }
 
@@ -935,6 +1011,46 @@
     document.getElementById('resetBtn').addEventListener('click', resetState);
     document.getElementById('runBatchBtn').addEventListener('click', runBatch);
     caseSelect.addEventListener('change', resetState);
+
+    // ------------------------------------------------------------------
+    // Session summary screen
+    // ------------------------------------------------------------------
+    const summaryScreen = document.getElementById('summary-screen');
+    const summaryFrozenNote = document.getElementById('summary-frozen-note');
+    const summaryNewSessionBtn = document.getElementById('summary-new-session-btn');
+    const summaryCloseBtn = document.getElementById('summary-close-btn');
+    const summaryAudiogramCanvas = document.getElementById('summary-audiogram-canvas');
+
+    function openSummaryScreen({ frozen }) {
+      SessionSummary.render({
+        accuracyEl: document.getElementById('summary-accuracy'),
+        actionTableEl: document.getElementById('summary-action-table'),
+        trajectoryEl: document.getElementById('summary-trajectory'),
+        audiogramCanvas: summaryAudiogramCanvas,
+      }, state);
+      summaryFrozenNote.hidden = !frozen;
+      summaryNewSessionBtn.hidden = !frozen;
+      summaryCloseBtn.hidden = frozen;
+      summaryScreen.hidden = false;
+      summaryScreen.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function hideSummaryScreen() {
+      summaryScreen.hidden = true;
+    }
+
+    document.getElementById('end-session-btn').addEventListener('click', () => {
+      sessionFrozen = true;
+      setPresentEnabled(false);
+      openSummaryScreen({ frozen: true });
+    });
+
+    document.getElementById('view-summary-btn').addEventListener('click', () => {
+      openSummaryScreen({ frozen: sessionFrozen });
+    });
+
+    summaryCloseBtn.addEventListener('click', hideSummaryScreen);
+    summaryNewSessionBtn.addEventListener('click', resetState);
 
     function tickElapsed() {
       if (stimulusOnsetMs !== null) {
