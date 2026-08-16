@@ -58,9 +58,21 @@
       "offsetRange": null
     }
   ],
-  "idleLoop": {
-    "variantId": "idle_loop_01",
-    "file": "idle_loop_01.mp4",
-    "durationMs": 4000
-  }
+  "idleLoops": [
+    {
+      "variantId": "idle_loop_01",
+      "file": "idle_loop_01.mp4",
+      "durationMs": 4000
+    },
+    {
+      "variantId": "idle_loop_02",
+      "file": "idle_loop_02.mp4",
+      "durationMs": 4000
+    },
+    {
+      "variantId": "idle_loop_03",
+      "file": "idle_loop_03.mp4",
+      "durationMs": 4000
+    }
+  ]
 }

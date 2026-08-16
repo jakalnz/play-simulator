@@ -32,7 +32,6 @@
   <script src="scheduler.js"></script>
   <script>
     let manifest = null;
-    let idleLoopUrl = null;
 
     let armedPlan = null;
     let armWallClockMs = null;
@@ -46,8 +45,8 @@
     const readout = document.getElementById('readout');
 
     function playIdleLoop() {
-      if (video.src === idleLoopUrl && !video.paused) return;
-      video.src = idleLoopUrl;
+      if (video.loop && !video.paused) return;
+      video.src = Scheduler.pickIdleLoopUrl(manifest);
       video.loop = true;
       video.play().catch(() => {});
     }
@@ -120,7 +119,6 @@
       .then((r) => r.json())
       .then((m) => {
         manifest = m;
-        idleLoopUrl = Scheduler.getIdleLoopUrl(manifest);
 
         const tokens = [...new Set(manifest.clips.map((c) => c.token))];
         outcomeSelect.innerHTML = tokens.map((t) => `<option value="${t}">${t}</option>`).join('');

@@ -40,11 +40,15 @@ function computeSchedulingPlan(manifest, outcome, offsetMs) {
   };
 }
 
-function getIdleLoopUrl(manifest) {
-  return clipUrl(manifest, manifest.idleLoop.file);
+// Picks one of the manifest's idle-loop variants at random, so the
+// between-trials footage varies instead of always looping the same clip.
+function pickIdleLoopUrl(manifest) {
+  const loops = manifest.idleLoops;
+  const loop = loops[Math.floor(Math.random() * loops.length)];
+  return clipUrl(manifest, loop.file);
 }
 
-const Scheduler = { computeSchedulingPlan, getIdleLoopUrl };
+const Scheduler = { computeSchedulingPlan, pickIdleLoopUrl };
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = Scheduler;

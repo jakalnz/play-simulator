@@ -522,7 +522,6 @@
 
       return { ...rawManifest, clips };
     }
-    let idleLoopUrl = null;
     let state = null;
     let activeGame = null;
     let gameIdx = 0;
@@ -1087,8 +1086,11 @@
     // Video playback (idle loop <-> clip)
     // ------------------------------------------------------------------
     function playIdleLoop() {
-      if (video.src === idleLoopUrl && !video.paused) return;
-      video.src = idleLoopUrl;
+      // video.loop is only ever true while an idle-loop clip is playing, so
+      // it doubles as "already idling" — a fixed idleLoopUrl comparison
+      // wouldn't work once idle footage is picked randomly per return-to-idle.
+      if (video.loop && !video.paused) return;
+      video.src = Scheduler.pickIdleLoopUrl(manifest);
       video.loop = true;
       video.play().catch(() => {});
     }
@@ -1298,7 +1300,6 @@
         .then((r) => r.json())
         .then((m) => {
           manifest = m;
-          idleLoopUrl = Scheduler.getIdleLoopUrl(manifest);
           resetState();
           uiControls = UiControls.wireUi({
             engine,
