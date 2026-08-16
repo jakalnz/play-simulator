@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Case admin</title>
+<link rel="stylesheet" href="css/audiogram.css" />
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; background: #f4f4f4; }
+  .page { max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem 3rem; }
+  .hidden { display: none !important; }
+  .gate { max-width: 360px; margin: 4rem auto; background: #fff; border: 1px solid #d8dadf;
+    border-radius: 10px; padding: 1.5rem; text-align: center; }
+  .gate input { width: 100%; padding: 0.5rem; font-size: 1rem; margin-top: 0.75rem; box-sizing: border-box; }
+  .gate button { width: 100%; margin-top: 0.75rem; padding: 0.5rem; }
+  .gate__error { color: #b30000; font-size: 0.85rem; margin-top: 0.5rem; min-height: 1.2em; }
+  .caveat { font-size: 0.75rem; color: #888; margin-top: 1rem; }
+
+  h1 { margin-bottom: 0.25rem; }
+  section.form-block { background: #fff; border: 1px solid #d8dadf; border-radius: 8px;
+    padding: 1rem 1.25rem; margin: 1rem 0; }
+  section.form-block h2 { margin-top: 0; font-size: 1.05rem; }
+  .field-row { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.6rem; }
+  .field { display: flex; flex-direction: column; gap: 0.2rem; min-width: 160px; }
+  .field label { font-size: 0.8rem; color: #555; }
+  .field input, .field textarea, .field select { padding: 0.35rem; font-size: 0.95rem; }
+  .field--wide { flex: 1 1 100%; }
+  .game-subsection { border: 1px solid #eee; border-radius: 6px; padding: 0.75rem; margin-bottom: 0.6rem; }
+  .game-subsection h3 { margin: 0 0 0.5rem; font-size: 0.9rem; text-transform: capitalize; }
+  #threshold-table { border-collapse: collapse; margin-bottom: 0.75rem; }
+  #threshold-table th, #threshold-table td { border: 1px solid #d8dadf; padding: 0.3rem 0.5rem; text-align: center; }
+  #threshold-table td.row-label { text-align: left; font-weight: 600; }
+  #threshold-table input { width: 56px; }
+  .admin-audiogram-wrap { width: 100%; max-width: 420px; height: 320px; }
+  .admin-audiogram-wrap canvas { width: 100%; height: 100%; border: 1px solid #d8dadf; border-radius: 6px; background: #fff; }
+  .clip-token-group { margin-bottom: 0.6rem; }
+  .clip-token-group__label { font-weight: 600; font-size: 0.85rem; }
+  .clip-token-group__note { font-size: 0.75rem; color: #888; }
+  .clip-checkbox { display: inline-flex; align-items: center; gap: 0.3rem; margin: 0.2rem 0.8rem 0.2rem 0; font-size: 0.85rem; }
+  .actions-row { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; margin-top: 1rem; }
+  .status-msg { font-size: 0.85rem; color: #1f8a2f; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div id="gate" class="gate">
+    <p class="section-label">Supervisor access</p>
+    <h1 style="font-size:1.3rem;">Enter admin password</h1>
+    <form id="gate-form">
+      <input id="gate-password" type="password" placeholder="Shared password" autocomplete="off" />
+      <button type="submit">Continue</button>
+      <div class="gate__error" id="gate-error"></div>
+    </form>
+    <p class="caveat">Casual-access deterrent only — not real authentication.</p>
+  </div>
+
+  <div id="admin-main" class="hidden">
+    <h1>Case admin</h1>
+    <p class="subtitle">Author or edit a case, then save it as JSON to drop into <code>cases/</code>.</p>
+
+    <div class="field-row">
+      <div class="field">
+        <label for="load-case-select">Load existing case</label>
+        <select id="load-case-select">
+          <option value="">— New case —</option>
+        </select>
+      </div>
+    </div>
+
+    <section class="form-block">
+      <h2>Identity</h2>
+      <div class="field-row">
+        <div class="field">
+          <label for="field-name">Name</label>
+          <input id="field-name" type="text" placeholder="e.g. Aroha" />
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field field--wide">
+          <label for="field-vignette">Vignette (one line)</label>
+          <input id="field-vignette" type="text" placeholder="e.g. 6yo, mild bilateral loss, engages well with cars." />
+        </div>
+      </div>
+    </section>
+
+    <section class="form-block">
+      <h2>Thresholds</h2>
+      <div style="overflow-x:auto;">
+        <table id="threshold-table">
+          <thead><tr id="threshold-table-head"></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="admin-audiogram-wrap">
+        <canvas id="admin-audiogram-canvas"></canvas>
+      </div>
+    </section>
+
+    <section class="form-block">
+      <h2>Session parameters</h2>
+      <div class="field-row">
+        <div class="field">
+          <label for="field-response-budget">Response budget</label>
+          <input id="field-response-budget" type="number" min="0" step="5" />
+        </div>
+        <div class="field">
+          <label for="field-starting-fatigue">Starting fatigue</label>
+          <input id="field-starting-fatigue" type="number" min="0" max="100" step="1" />
+        </div>
+        <div class="field">
+          <label for="field-engagement-decay">Engagement decay rate (×, 1.0 = normal)</label>
+          <input id="field-engagement-decay" type="number" min="0.1" max="3" step="0.1" />
+        </div>
+        <div class="field">
+          <label for="field-fp-susceptibility">False-positive susceptibility (×, 1.0 = normal)</label>
+          <input id="field-fp-susceptibility" type="number" min="0.1" max="3" step="0.1" />
+        </div>
+      </div>
+    </section>
+
+    <section class="form-block" id="games-section">
+      <h2>Games</h2>
+    </section>
+
+    <section class="form-block">
+      <h2>Clip eligibility</h2>
+      <p class="clip-token-group__note">Unchecked = that clip variant will never play for this case. Most cases should leave everything checked.</p>
+      <div id="clip-eligibility-list"></div>
+    </section>
+
+    <div class="actions-row">
+      <button id="save-btn">Save (download JSON)</button>
+      <button id="preview-btn">Preview this case</button>
+      <span class="status-msg" id="admin-status"></span>
+    </div>
+  </div>
+</div>
+
+<script src="childModel.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/audiogram-chart.js"></script>
+<script src="js/case-utils.js"></script>
+<script src="js/case-threshold-editor.js"></script>
+<script>
+  'use strict';
+
+  // ------------------------------------------------------------------
+  // Gate — casual-access deterrent only, no backend (per step 8's
+  // no-server-storage brief). Matches the otoscopy admin.html pattern's
+  // client-side half: sessionStorage-cached, hardcoded password.
+  // ------------------------------------------------------------------
+  const ADMIN_PASSWORD = '1234';
+  const gate = document.getElementById('gate');
+  const adminMain = document.getElementById('admin-main');
+  const gateForm = document.getElementById('gate-form');
+  const gatePassword = document.getElementById('gate-password');
+  const gateError = document.getElementById('gate-error');
+
+  function enterAdmin() {
+    gate.classList.add('hidden');
+    adminMain.classList.remove('hidden');
+    initAdmin();
+  }
+
+  if (sessionStorage.getItem('playSimAdminPw') === ADMIN_PASSWORD) {
+    enterAdmin();
+  }
+
+  gateForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const pw = gatePassword.value.trim();
+    if (pw !== ADMIN_PASSWORD) {
+      gateError.textContent = 'Incorrect password.';
+      return;
+    }
+    sessionStorage.setItem('playSimAdminPw', pw);
+    enterAdmin();
+  });
+
+  // ------------------------------------------------------------------
+  // Admin form
+  // ------------------------------------------------------------------
+  let adminInitialized = false;
+  let caseDraft = null;
+  let thresholdEditor = null;
+  let manifest = null;
+
+  function refreshAudiogram() {
+    const canvas = document.getElementById('admin-audiogram-canvas');
+    if (!canvas || !window.AudiogramChart) return;
+    const points = [];
+    ['right', 'left'].forEach((ear) => {
+      const row = caseDraft.trueThreshold[ear];
+      window.PtaUtils.FREQUENCIES.forEach((freq) => {
+        const level = row[freq];
+        if (level == null) return;
+        points.push({ ear, freq, level, mode: 'AC', masked: false, noResponse: false });
+      });
+    });
+    window.AudiogramChart.renderAudiogram(canvas, points);
+  }
+
+  function fieldsToDraft() {
+    caseDraft.name = document.getElementById('field-name').value;
+    caseDraft.vignette = document.getElementById('field-vignette').value;
+    caseDraft.responseBudget = Number(document.getElementById('field-response-budget').value);
+    caseDraft.startingFatigue = Number(document.getElementById('field-starting-fatigue').value);
+    caseDraft.engagementDecayRate = Number(document.getElementById('field-engagement-decay').value);
+    caseDraft.falsePositiveSusceptibility = Number(document.getElementById('field-fp-susceptibility').value);
+    window.CaseUtils.GAMES.forEach((g) => {
+      caseDraft.games[g].baseResponseLevel = Number(document.getElementById(`game-${g}-base`).value);
+      caseDraft.games[g].conditioningGainRate = Number(document.getElementById(`game-${g}-gain`).value);
+      caseDraft.games[g].startingConditioning = Number(document.getElementById(`game-${g}-start`).value);
+    });
+  }
+
+  function draftToFields() {
+    document.getElementById('field-name').value = caseDraft.name || '';
+    document.getElementById('field-vignette').value = caseDraft.vignette || '';
+    document.getElementById('field-response-budget').value = caseDraft.responseBudget;
+    document.getElementById('field-starting-fatigue').value = caseDraft.startingFatigue;
+    document.getElementById('field-engagement-decay').value = caseDraft.engagementDecayRate;
+    document.getElementById('field-fp-susceptibility').value = caseDraft.falsePositiveSusceptibility;
+    window.CaseUtils.GAMES.forEach((g) => {
+      document.getElementById(`game-${g}-base`).value = caseDraft.games[g].baseResponseLevel;
+      document.getElementById(`game-${g}-gain`).value = caseDraft.games[g].conditioningGainRate;
+      document.getElementById(`game-${g}-start`).value = caseDraft.games[g].startingConditioning;
+    });
+    thresholdEditor.render();
+    refreshAudiogram();
+    renderClipEligibility();
+  }
+
+  function buildGamesSection() {
+    const section = document.getElementById('games-section');
+    window.CaseUtils.GAMES.forEach((g) => {
+      const sub = document.createElement('div');
+      sub.className = 'game-subsection';
+      sub.innerHTML = `
+        <h3>${g}</h3>
+        <div class="field-row">
+          <div class="field">
+            <label for="game-${g}-base">Base response level</label>
+            <input id="game-${g}-base" type="number" min="0" max="120" step="1" />
+          </div>
+          <div class="field">
+            <label for="game-${g}-gain">Conditioning gain rate</label>
+            <input id="game-${g}-gain" type="number" min="0" max="2" step="0.05" />
+          </div>
+          <div class="field">
+            <label for="game-${g}-start">Starting conditioning</label>
+            <input id="game-${g}-start" type="number" min="0" max="100" step="1" />
+          </div>
+        </div>
+      `;
+      section.appendChild(sub);
+      sub.querySelectorAll('input').forEach((input) => {
+        input.addEventListener('change', fieldsToDraft);
+      });
+    });
+  }
+
+  function renderClipEligibility() {
+    const list = document.getElementById('clip-eligibility-list');
+    list.innerHTML = '';
+    if (!manifest) return;
+
+    const byToken = {};
+    manifest.clips.forEach((clip) => {
+      (byToken[clip.token] = byToken[clip.token] || []).push(clip);
+    });
+
+    Object.keys(byToken).forEach((token) => {
+      const group = document.createElement('div');
+      group.className = 'clip-token-group';
+      const label = document.createElement('div');
+      label.className = 'clip-token-group__label';
+      label.textContent = token;
+      group.appendChild(label);
+
+      if (!window.CaseUtils.REACHABLE_TOKENS.includes(token)) {
+        const note = document.createElement('div');
+        note.className = 'clip-token-group__note';
+        note.textContent = 'Not currently reachable by any trial outcome — restricting this has no effect yet.';
+        group.appendChild(note);
+      }
+
+      byToken[token].forEach((clip) => {
+        const restriction = caseDraft.clipEligibility && caseDraft.clipEligibility[token];
+        const checked = !restriction || restriction.includes(clip.variantId);
+        const wrap = document.createElement('label');
+        wrap.className = 'clip-checkbox';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = checked;
+        cb.addEventListener('change', () => updateClipEligibility(token));
+        wrap.appendChild(cb);
+        wrap.appendChild(document.createTextNode(clip.variantId));
+        wrap.dataset.token = token;
+        wrap.dataset.variantId = clip.variantId;
+        group.appendChild(wrap);
+      });
+
+      list.appendChild(group);
+    });
+  }
+
+  function updateClipEligibility(token) {
+    const boxes = [...document.querySelectorAll(`.clip-checkbox[data-token="${token}"]`)];
+    const allChecked = boxes.every((b) => b.querySelector('input').checked);
+    if (allChecked) {
+      if (caseDraft.clipEligibility) delete caseDraft.clipEligibility[token];
+    } else {
+      caseDraft.clipEligibility = caseDraft.clipEligibility || {};
+      caseDraft.clipEligibility[token] = boxes
+        .filter((b) => b.querySelector('input').checked)
+        .map((b) => b.dataset.variantId);
+    }
+  }
+
+  function slugify(name) {
+    return (name || 'case').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'case';
+  }
+
+  function downloadJson(obj, filename) {
+    const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function populateLoadSelect() {
+    const select = document.getElementById('load-case-select');
+    try {
+      const index = await fetch('cases/index.json').then((r) => r.json());
+      index.forEach((filename) => {
+        const opt = document.createElement('option');
+        opt.value = filename;
+        opt.textContent = filename;
+        select.appendChild(opt);
+      });
+    } catch (err) {
+      console.warn('Could not load cases/index.json for the "load existing case" picker:', err.message);
+    }
+  }
+
+  function initAdmin() {
+    if (adminInitialized) return;
+    adminInitialized = true;
+
+    buildGamesSection();
+
+    // buildThresholdEditor closes over the `caseDraft` object reference it
+    // was given at construction time, but caseDraft is reassigned wholesale
+    // on load — rebuild the editor each time that happens instead of
+    // trying to keep one editor pointed at a moving reference.
+    function rebuildThresholdEditor() {
+      thresholdEditor = window.CaseThresholdEditor.buildThresholdEditor({
+        caseDraft,
+        tbody: document.querySelector('#threshold-table tbody'),
+        thead: document.getElementById('threshold-table-head'),
+        onChange: refreshAudiogram,
+      });
+    }
+
+    document.querySelectorAll('#field-name, #field-vignette, #field-response-budget, #field-starting-fatigue, #field-engagement-decay, #field-fp-susceptibility')
+      .forEach((input) => input.addEventListener('change', fieldsToDraft));
+
+    document.getElementById('load-case-select').addEventListener('change', async (e) => {
+      const filename = e.target.value;
+      caseDraft = filename
+        ? await fetch(`cases/${filename}`).then((r) => r.json())
+        : window.CaseUtils.blankCaseConfig();
+      rebuildThresholdEditor();
+      draftToFields();
+    });
+
+    document.getElementById('save-btn').addEventListener('click', () => {
+      fieldsToDraft();
+      const filename = `${slugify(caseDraft.name)}.json`;
+      downloadJson(caseDraft, filename);
+      document.getElementById('admin-status').textContent =
+        `Saved ${filename}. Drop it into cases/ and add "${filename}" to cases/index.json for it to appear on the case selection screen.`;
+    });
+
+    document.getElementById('preview-btn').addEventListener('click', () => {
+      fieldsToDraft();
+      sessionStorage.setItem('playSimSelectedCase', JSON.stringify(caseDraft));
+      window.open('trial-runner.html', '_blank');
+    });
+
+    fetch('manifest.json')
+      .then((r) => r.json())
+      .then((m) => {
+        manifest = m;
+        renderClipEligibility();
+      })
+      .catch((err) => {
+        document.getElementById('clip-eligibility-list').textContent =
+          'Failed to load manifest.json: ' + err.message;
+      });
+
+    populateLoadSelect();
+
+    caseDraft = window.CaseUtils.blankCaseConfig();
+    rebuildThresholdEditor();
+    draftToFields();
+  }
+</script>
+</body>
+</html>

@@ -89,7 +89,8 @@
     <h1>Trial runner (childModel + audiometer controls)</h1>
 
     <div class="top-controls">
-      <label>Case:
+      <a id="change-case-link" href="index.html" hidden>← Change case</a>
+      <label id="case-select-label">Case:
         <select id="caseSelect"></select>
       </label>
       <label>Strategy:
@@ -386,6 +387,7 @@
   <script src="sampleCases.js"></script>
   <script src="phrases.js"></script>
   <script src="js/utils.js"></script>
+  <script src="js/case-utils.js"></script>
   <script src="js/masking-logic.js"></script>
   <script src="js/tone-player.js"></script>
   <script src="js/noise-player.js"></script>
@@ -480,6 +482,49 @@
     const GAME_SWITCH_EVERY = 35; // mirrors testHarness.js runSimulation default
 
     let manifest = null;
+    let currentCaseConfig = null;
+
+    // Step 8: filters a manifest's clips down to a case's clipEligibility
+    // restriction (if any), per token. Falls back to the unfiltered clip
+    // list for any token that's still reachable from a trial outcome
+    // (CaseUtils.REACHABLE_TOKENS) if the restriction would otherwise leave
+    // zero clips for it — without this, a hand-edited case that empties out
+    // a reachable token makes Scheduler.computeSchedulingPlan throw the
+    // first time that outcome is rolled, permanently wedging presentTrial()
+    // (pending trial never resolves, Present stays disabled, no visible
+    // error). Tokens with no restriction entry pass through unfiltered.
+    function buildEffectiveManifest(rawManifest, caseConfig) {
+      const restriction = caseConfig && caseConfig.clipEligibility;
+      if (!restriction || Object.keys(restriction).length === 0) return rawManifest;
+
+      const byToken = {};
+      rawManifest.clips.forEach((clip) => {
+        (byToken[clip.token] = byToken[clip.token] || []).push(clip);
+      });
+
+      // Tokens whose restriction would leave zero clips: skip the
+      // restriction for those (computed once per token, not per clip, so
+      // the fallback warning doesn't repeat per variant).
+      const skipRestrictionFor = new Set();
+      Object.keys(restriction).forEach((token) => {
+        const allowed = restriction[token];
+        const survivors = (byToken[token] || []).filter((c) => allowed.includes(c.variantId));
+        if (survivors.length === 0 && window.CaseUtils.REACHABLE_TOKENS.includes(token)) {
+          console.warn(
+            `clipEligibility for token "${token}" excludes every variant; falling back to the full set for this token.`
+          );
+          skipRestrictionFor.add(token);
+        }
+      });
+
+      const clips = rawManifest.clips.filter((clip) => {
+        const allowed = restriction[clip.token];
+        if (!allowed || skipRestrictionFor.has(clip.token)) return true;
+        return allowed.includes(clip.variantId);
+      });
+
+      return { ...rawManifest, clips };
+    }
     let idleLoopUrl = null;
     let state = null;
     let activeGame = null;
@@ -503,6 +548,21 @@
       .map((k) => `<option value="${k}">${k}</option>`)
       .join('');
     caseSelect.value = 'hardChild'; // matches step 1's validated CSV trajectory
+
+    // ------------------------------------------------------------------
+    // Step 8: case handed off from index.html/admin.html's "Preview this
+    // case" via sessionStorage, if present. Read ONCE here — resetState()
+    // below always prefers this over caseSelect.value, so
+    // ending/resetting a session can't silently fall back to whatever the
+    // (now-hidden) dropdown happens to show.
+    // ------------------------------------------------------------------
+    const handoffRaw = sessionStorage.getItem('playSimSelectedCase');
+    const handoffCaseConfig = handoffRaw ? JSON.parse(handoffRaw) : null;
+
+    if (handoffCaseConfig) {
+      document.getElementById('case-select-label').hidden = true;
+      document.getElementById('change-case-link').hidden = false;
+    }
 
     strategySelect.innerHTML = Object.keys(strategies)
       .map((k) => `<option value="${k}">${k}</option>`)
@@ -813,7 +873,8 @@
       // judge it (showJudgementPrompt()).
       const isConditioning = afterTrialState.phase === 'conditioning';
       const token = isConditioning ? 'reinforcer_response' : mapOutcomeToToken(trialResult.outcome);
-      const plan = Scheduler.computeSchedulingPlan(manifest, token, trialResult.timingOffsetMs);
+      const effectiveManifest = buildEffectiveManifest(manifest, currentCaseConfig);
+      const plan = Scheduler.computeSchedulingPlan(effectiveManifest, token, trialResult.timingOffsetMs);
       const onClipFinished = isConditioning ? autoPairConditioning : showJudgementPrompt;
 
       onsetFlash.textContent = '—';
@@ -869,7 +930,8 @@
     let uiControls = null;
 
     function resetState() {
-      const caseConfig = SampleCases[caseSelect.value];
+      const caseConfig = handoffCaseConfig || SampleCases[caseSelect.value];
+      currentCaseConfig = caseConfig;
       state = ChildModel.createChildState(caseConfig);
       activeGame = ModelConfig.games[0];
       gameIdx = 0;

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Choose a child</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; background: #f4f4f4; }
+  .page { max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem 3rem; }
+  h1 { margin-bottom: 0.25rem; }
+  .subtitle { color: #555; margin-top: 0; margin-bottom: 2rem; }
+  .case-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; }
+  .case-card {
+    background: #fff; border: 1px solid #d8dadf; border-radius: 10px; padding: 1.1rem 1.2rem;
+    cursor: pointer; text-align: left; font: inherit; display: flex; flex-direction: column; gap: 0.5rem;
+  }
+  .case-card:hover { border-color: #1f5fd2; box-shadow: 0 2px 8px rgba(31,95,210,0.15); }
+  .case-card__name { font-size: 1.15rem; font-weight: 700; }
+  .case-card__vignette { color: #444; font-size: 0.9rem; flex-grow: 1; }
+  .case-card__difficulty {
+    align-self: flex-start; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.03em; color: #1f5fd2; background: #eaf0fb; padding: 0.2rem 0.55rem; border-radius: 4px;
+  }
+  .empty-state { color: #666; font-style: italic; }
+  .admin-link { display: inline-block; margin-top: 2rem; font-size: 0.85rem; color: #666; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Choose a child</h1>
+  <p class="subtitle">Select a case to start a play audiometry session.</p>
+  <div class="case-grid" id="case-grid">
+    <p class="empty-state">Loading cases…</p>
+  </div>
+  <a class="admin-link" href="admin.html">Instructor admin →</a>
+</div>
+
+<script src="js/utils.js"></script>
+<script src="js/case-utils.js"></script>
+<script>
+  const caseGrid = document.getElementById('case-grid');
+
+  function buildCard(caseConfig, filename) {
+    const btn = document.createElement('button');
+    btn.className = 'case-card';
+    btn.type = 'button';
+
+    const name = document.createElement('div');
+    name.className = 'case-card__name';
+    name.textContent = caseConfig.name || filename;
+
+    const vignette = document.createElement('div');
+    vignette.className = 'case-card__vignette';
+    vignette.textContent = caseConfig.vignette || '';
+
+    const difficulty = document.createElement('div');
+    difficulty.className = 'case-card__difficulty';
+    difficulty.textContent = window.CaseUtils.computeDifficultySummary(caseConfig);
+
+    btn.appendChild(name);
+    btn.appendChild(vignette);
+    btn.appendChild(difficulty);
+
+    btn.addEventListener('click', () => {
+      sessionStorage.setItem('playSimSelectedCase', JSON.stringify(caseConfig));
+      location.href = 'trial-runner.html';
+    });
+
+    return btn;
+  }
+
+  async function loadCases() {
+    try {
+      const index = await fetch('cases/index.json').then((r) => r.json());
+      const configs = await Promise.all(
+        index.map((filename) => fetch(`cases/${filename}`).then((r) => r.json()))
+      );
+
+      caseGrid.innerHTML = '';
+      if (configs.length === 0) {
+        caseGrid.innerHTML = '<p class="empty-state">No cases available yet.</p>';
+        return;
+      }
+
+      configs.forEach((caseConfig, i) => {
+        const filename = index[i];
+        const missing = window.CaseUtils.findMissingThresholds(caseConfig);
+        if (missing.length) {
+          console.warn(`Case "${filename}" is missing trueThreshold entries: ${missing.join(', ')}`);
+        }
+        caseGrid.appendChild(buildCard(caseConfig, filename));
+      });
+    } catch (err) {
+      caseGrid.innerHTML = `<p class="empty-state">Failed to load cases: ${err.message}</p>`;
+    }
+  }
+
+  loadCases();
+</script>
+</body>
+</html>

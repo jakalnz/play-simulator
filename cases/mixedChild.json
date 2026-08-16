@@ -1,0 +1,18 @@
+{
+  "name": "Aroha",
+  "vignette": "6yo, asymmetric mild-moderate loss, strong with cars but weak with new games.",
+  "trueThreshold": {
+    "right": { "500": 20, "1000": 25, "2000": 20, "4000": 30 },
+    "left": { "500": 20, "1000": 25, "2000": 20, "4000": 30 }
+  },
+  "startingFatigue": 5,
+  "startingPhase": "conditioning",
+  "responseBudget": 120,
+  "engagementDecayRate": 1,
+  "falsePositiveSusceptibility": 1,
+  "games": {
+    "cars": { "baseResponseLevel": 75, "conditioningGainRate": 1.2, "startingConditioning": 15 },
+    "horses": { "baseResponseLevel": 40, "conditioningGainRate": 0.5, "startingConditioning": 0 },
+    "marbles": { "baseResponseLevel": 20, "conditioningGainRate": 0.3, "startingConditioning": 0 }
+  }
+}

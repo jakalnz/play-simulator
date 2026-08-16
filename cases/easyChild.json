@@ -1,0 +1,18 @@
+{
+  "name": "Mia",
+  "vignette": "4yo, mild bilateral loss, conditions quickly and stays engaged.",
+  "trueThreshold": {
+    "right": { "500": 15, "1000": 15, "2000": 20, "4000": 20 },
+    "left": { "500": 15, "1000": 15, "2000": 20, "4000": 20 }
+  },
+  "startingFatigue": 0,
+  "startingPhase": "conditioning",
+  "responseBudget": 120,
+  "engagementDecayRate": 1,
+  "falsePositiveSusceptibility": 1,
+  "games": {
+    "cars": { "baseResponseLevel": 70, "conditioningGainRate": 1.1, "startingConditioning": 10 },
+    "horses": { "baseResponseLevel": 60, "conditioningGainRate": 0.9, "startingConditioning": 5 },
+    "marbles": { "baseResponseLevel": 55, "conditioningGainRate": 0.8, "startingConditioning": 0 }
+  }
+}

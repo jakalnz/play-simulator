@@ -115,7 +115,9 @@ function createChildState(caseConfig) {
     trueThreshold: deepClone(caseConfig.trueThreshold),
     engagementLevel: 100,
     fatigueLevel: caseConfig.startingFatigue != null ? caseConfig.startingFatigue : 0,
-    responseBudget: CONFIG.responseBudgetStart,
+    responseBudget: caseConfig.responseBudget != null ? caseConfig.responseBudget : CONFIG.responseBudgetStart,
+    engagementDecayRate: caseConfig.engagementDecayRate != null ? caseConfig.engagementDecayRate : 1,
+    falsePositiveSusceptibility: caseConfig.falsePositiveSusceptibility != null ? caseConfig.falsePositiveSusceptibility : 1,
     falsePositiveRatio: 0,
     games,
     reinforcerNovelty,
@@ -178,7 +180,8 @@ function computeProbabilities(state, audible, activeGame) {
   }
 
   let pFalsePositive =
-    CONFIG.pFalsePositive.base + lowConditioningTerm + lowEngagementTerm + comboBoost;
+    (CONFIG.pFalsePositive.base + lowConditioningTerm + lowEngagementTerm + comboBoost) *
+    state.falsePositiveSusceptibility;
   pFalsePositive = clamp(pFalsePositive, 0, 0.9);
 
   // Ensure pGenuine + pFalsePositive doesn't exceed 1
@@ -368,8 +371,9 @@ function updateEngagementAndFatigue(state, activeGame) {
   const noveltyFactor = 1 - (s.reinforcerNovelty[s.lastUsedIcon || CONFIG.icons[0]] || 100) / 200;
 
   const engagementDecay =
-    CONFIG.engagementDecayPerTrial +
-    s.trialsSinceReinforcement * CONFIG.engagementDecayPerTrialSinceReinforcement * (1 + noveltyFactor);
+    (CONFIG.engagementDecayPerTrial +
+      s.trialsSinceReinforcement * CONFIG.engagementDecayPerTrialSinceReinforcement * (1 + noveltyFactor)) *
+    s.engagementDecayRate;
   s.engagementLevel = clamp(s.engagementLevel - engagementDecay, 0, 100);
 
   const fatigueRise =
