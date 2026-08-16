@@ -22,7 +22,7 @@
 
   const RESPONSE_LIGHT_MS = 900;
 
-  function wireUi({ engine, patientModel, dom, resolveResponse }) {
+  function wireUi({ engine, patientModel, dom, resolveResponse, onInteract, onInteractEscape }) {
     let soundOn = true;
     let hintsOn = true;
     let examLocked = false;
@@ -292,7 +292,8 @@
     // controls (storeThreshold/deletePoint/startPresenting/stopPresenting) —
     // no separate keyboard-only logic. Space = press-and-hold Present,
     // arrows = level/frequency, Shift+arrows = masking level, M = toggle
-    // masking, S = Store, Delete = delete the currently-dialled-in point.
+    // masking, S = Store, Delete = delete the currently-dialled-in point,
+    // I = toggle the free-form Interact palette, Esc = close it.
     if (window.KeyboardShortcuts) {
       window.KeyboardShortcuts.wireKeyboardShortcuts({
         engine,
@@ -301,6 +302,8 @@
         onLevelChange: clearResponseLight,
         onPresentStart: startPresenting,
         onPresentEnd: stopPresenting,
+        onInteract,
+        onInteractEscape,
       });
     }
 

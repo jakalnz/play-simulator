@@ -5,7 +5,7 @@
 // pointerdown/pointerup pattern), arrows = level/frequency, Shift+arrows =
 // masking level, M = toggle masking, S = Store, Delete = delete stored point.
 (function () {
-  function wireKeyboardShortcuts({ engine, onStore, onDelete, onLevelChange, onPresentStart, onPresentEnd }) {
+  function wireKeyboardShortcuts({ engine, onStore, onDelete, onLevelChange, onPresentStart, onPresentEnd, onInteract, onInteractEscape }) {
     function isTextInput(el) {
       return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
     }
@@ -57,6 +57,14 @@
         case 'Delete':
           e.preventDefault();
           onDelete?.();
+          break;
+        case 'i':
+        case 'I':
+          e.preventDefault();
+          onInteract?.();
+          break;
+        case 'Escape':
+          onInteractEscape?.();
           break;
         case ' ':
         case 'Spacebar':

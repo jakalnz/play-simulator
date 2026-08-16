@@ -44,17 +44,14 @@
   .keyboard-shortcuts-hint ul { margin: 0.4rem 0 0; padding-left: 1.1rem; }
   .keyboard-shortcuts-hint li { margin-bottom: 0.2rem; }
   .keyboard-shortcuts-hint kbd { font-family: monospace; background: #eee; border: 1px solid #ccc; border-radius: 3px; padding: 0 0.3rem; }
-  .judgement-panel { margin: 1rem 0; padding: 1rem; border: 1px solid #d8dadf; border-radius: 8px; background: #fff; min-height: 4.5rem; }
-  .judgement-panel[hidden] { display: none; }
-  .judgement-panel__prompt { font-weight: 600; margin-bottom: 0.6rem; }
-  .judgement-panel__buttons { display: flex; gap: 0.6rem; flex-wrap: wrap; }
-  .judgement-panel__buttons[hidden] { display: none; }
-  .judgement-btn { font-size: 1rem; padding: 0.6rem 1.2rem; border-radius: 6px; border: 2px solid #d8dadf; background: #fff; cursor: pointer; }
-  .judgement-btn.accept { border-color: #1f8a2f; }
-  .judgement-btn.not-accept { border-color: #b30000; }
-  .judgement-btn.reinforce { border-color: #1f8a2f; background: #eaf7ec; }
-  .judgement-btn.reinstruct { border-color: #1f5fd2; background: #eaf0fb; }
-  .judgement-btn.withhold { border-color: #888; background: #f0f0f0; }
+  .interact-row { margin: 1rem 0; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; position: relative; }
+  .interact-btn { font-size: 1rem; padding: 0.6rem 1.2rem; border-radius: 6px; border: 2px solid #1f5fd2; background: #eaf0fb; cursor: pointer; font-weight: 600; }
+  .interact-palette { position: absolute; top: 100%; left: 0; z-index: 5; margin-top: 0.4rem; padding: 0.75rem; border: 1px solid #d8dadf; border-radius: 8px; background: #fff; box-shadow: 0 4px 14px rgba(0,0,0,0.12); display: flex; flex-direction: column; gap: 0.5rem; min-width: 260px; }
+  .interact-palette[hidden] { display: none; }
+  .interact-option-btn { font-size: 0.95rem; padding: 0.5rem 0.9rem; border-radius: 6px; border: 2px solid #d8dadf; background: #fff; cursor: pointer; text-align: left; display: flex; align-items: center; gap: 0.5rem; }
+  .interact-option-btn.reinforce { border-color: #1f8a2f; background: #eaf7ec; }
+  .interact-option-btn.reinstruct { border-color: #1f5fd2; background: #eaf0fb; }
+  .interact-cancel-btn { font-size: 0.85rem; padding: 0.4rem 0.9rem; border-radius: 6px; border: 1px solid #d8dadf; background: #f4f4f4; cursor: pointer; align-self: flex-end; }
   .feedback-flash { display: flex; align-items: center; gap: 0.6rem; font-size: 1.1rem; padding: 0.4rem 0; }
   .feedback-flash__icon { font-size: 1.8rem; }
   .session-log { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
@@ -166,6 +163,8 @@
             <li><kbd>M</kbd> toggle masking</li>
             <li><kbd>S</kbd> store</li>
             <li><kbd>Delete</kbd> delete point</li>
+            <li><kbd>I</kbd> interact (open/close palette)</li>
+            <li><kbd>Esc</kbd> close interact palette</li>
           </ul>
         </details>
 
@@ -212,19 +211,11 @@
           <button id="end-session-btn" class="touch-target">End Session</button>
         </div>
 
-        <div class="judgement-panel" id="judgement-panel" hidden>
-          <div class="judgement-panel__prompt" id="judgement-prompt">Was that a genuine response?</div>
-          <div class="judgement-panel__buttons" id="judgement-buttons">
-            <button class="judgement-btn accept" id="accept-btn">Accept</button>
-            <button class="judgement-btn not-accept" id="not-accept-btn">Not accept</button>
-          </div>
-          <div class="judgement-panel__buttons" id="action-buttons" hidden>
-            <button class="judgement-btn reinforce" id="reinforce-btn">Reinforce</button>
-            <button class="judgement-btn reinstruct" id="reinstruct-btn">Re-instruct</button>
-            <button class="judgement-btn withhold" id="withhold-btn" title="No reward, no guidance" aria-label="Withhold — no reward, no guidance">Withhold</button>
-          </div>
-          <div class="feedback-flash" id="feedback-flash"></div>
+        <div class="interact-row">
+          <button id="interact-btn" class="interact-btn" aria-haspopup="true" aria-expanded="false">Interact (I)</button>
+          <div class="interact-palette" id="interact-palette" hidden></div>
         </div>
+        <div class="feedback-flash" id="feedback-flash"></div>
 
         <div class="row chart-response-row">
           <button id="no-response-btn" class="touch-target">No Response</button>
@@ -592,25 +583,24 @@
     // driven by real student judgement, not this auto-driver.
 
     // ------------------------------------------------------------------
-    // Student judgement UI state
+    // Free-form Interact UI state
     // ------------------------------------------------------------------
-    const judgementPanel = document.getElementById('judgement-panel');
-    const judgementPrompt = document.getElementById('judgement-prompt');
-    const judgementButtons = document.getElementById('judgement-buttons');
-    const actionButtons = document.getElementById('action-buttons');
-    const acceptBtn = document.getElementById('accept-btn');
-    const notAcceptBtn = document.getElementById('not-accept-btn');
-    const reinforceBtn = document.getElementById('reinforce-btn');
-    const reinstructBtn = document.getElementById('reinstruct-btn');
-    const withholdBtn = document.getElementById('withhold-btn');
+    const interactBtn = document.getElementById('interact-btn');
+    const interactPalette = document.getElementById('interact-palette');
     const feedbackFlash = document.getElementById('feedback-flash');
     const sessionLogBody = document.getElementById('session-log-body');
 
-    let pendingTrial = null; // { afterTrialState, trialResult, ear, freq, mode, masked, presentedLevel }
-    let studentJudgement = null; // 'accept' | 'not_accept'
-    let lastReinforceIcon = null;
-    let lastReinforcePhrase = null;
-    let lastReinstructPhrase = null;
+    const INTERACTION_GRACE_MS = 2000; // resolution window stays open this long past clip end
+
+    // Ordered oldest-first. Each event:
+    // { id, trialResult, freq, ear, mode, masked, presentedLevel,
+    //   clipEndedAt, expiresAt, expiryTimer }
+    // Deliberately does NOT carry a cloned childModel state (see plan) —
+    // every resolution (explicit or implicit) applies against the live
+    // `state` at resolution time, and events must resolve oldest-first so
+    // responseHistory/trialCount ordering stays correct.
+    let pendingEvents = [];
+    let nextEventId = 1;
     let sessionLogRows = 0;
     let sessionFrozen = false; // UI-level: set by End Session, blocks further trials
 
@@ -627,9 +617,11 @@
 
     function setPhase(phase) {
       if (!state || state.phase === phase) return;
-      // Instant and safe: only the phase flag changes here — no other
-      // childModel state (conditioningLevel, engagement, fatigue, session
-      // log, stored points) is touched.
+      // Any resolution windows still open under the old phase are flushed
+      // (resolved as implicit withhold, oldest-first) before the switch,
+      // rather than blocking the toggle — matches the free-form Interact
+      // flow, where Present is no longer gated on judgement.
+      flushPendingEvents();
       state.phase = phase;
       refreshPhaseToggle();
       updateReadout();
@@ -670,38 +662,66 @@
     }
 
     function setPresentEnabled(enabled) {
+      // Only the currently-playing clip (the video element itself) is the
+      // real constraint now — Present re-enables at clip end, not at
+      // judgement, since multiple resolution windows can be open at once.
       dom.presentBtn.disabled = !enabled;
-      // Switching phase mid-trial (clip playing / judgement pending) would
-      // leave the in-flight trial in a confusing state, so block it the
-      // same way Present itself is blocked — re-enabled the instant the
-      // pending trial resolves.
-      phaseToggleButtons.forEach((btn) => { btn.disabled = !enabled; });
     }
 
-    function showJudgementPrompt() {
-      judgementPrompt.hidden = false;
-      judgementButtons.hidden = false;
-      actionButtons.hidden = true;
-      feedbackFlash.textContent = '';
-      judgementPanel.hidden = false;
+    // ------------------------------------------------------------------
+    // Interact palette (open/close only — resolution logic is in
+    // resolveInteraction()/expireEvent()/flushPendingEvents() below)
+    // ------------------------------------------------------------------
+    function renderInteractPalette() {
+      interactPalette.innerHTML = '';
+      Phrases.interactOptions.forEach((opt) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `interact-option-btn ${opt.action}`;
+        btn.dataset.optionId = opt.id;
+        btn.innerHTML = `<span>${opt.icon}</span><span>${opt.phrase}</span>`;
+        btn.addEventListener('click', () => {
+          resolveInteraction(opt.id);
+          hideInteractPalette();
+        });
+        interactPalette.appendChild(btn);
+      });
+      const cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'interact-cancel-btn';
+      cancelBtn.textContent = 'Cancel';
+      cancelBtn.addEventListener('click', hideInteractPalette);
+      interactPalette.appendChild(cancelBtn);
     }
 
-    function showActionButtons(judgement) {
-      studentJudgement = judgement;
-      judgementButtons.hidden = true;
-      actionButtons.hidden = false;
-      reinforceBtn.hidden = judgement !== 'accept';
-      reinstructBtn.hidden = judgement !== 'not_accept';
-      withholdBtn.hidden = judgement !== 'not_accept';
+    function isPaletteOpen() {
+      return !interactPalette.hidden;
     }
 
-    function hideJudgementPanel() {
-      judgementPanel.hidden = true;
-      judgementPrompt.hidden = false;
-      judgementButtons.hidden = false;
-      actionButtons.hidden = true;
-      studentJudgement = null;
+    function showInteractPalette() {
+      interactPalette.hidden = false;
+      interactBtn.setAttribute('aria-expanded', 'true');
     }
+
+    function hideInteractPalette() {
+      interactPalette.hidden = true;
+      interactBtn.setAttribute('aria-expanded', 'false');
+    }
+
+    function toggleInteractPalette() {
+      if (isPaletteOpen()) {
+        hideInteractPalette();
+      } else {
+        showInteractPalette();
+      }
+    }
+
+    interactBtn.addEventListener('click', toggleInteractPalette);
+    document.addEventListener('click', (e) => {
+      if (isPaletteOpen() && !interactPalette.contains(e.target) && e.target !== interactBtn) {
+        hideInteractPalette();
+      }
+    });
 
     function showFeedback(icon, phrase) {
       feedbackFlash.innerHTML = '';
@@ -719,12 +739,16 @@
     function addSessionLogRow(entry, judgement, action, isCorrect) {
       sessionLogRows += 1;
       const tr = document.createElement('tr');
+      const judgementLabel = judgement === 'accept' ? 'Accept' : judgement === 'not_accept' ? 'Not accept' : '—';
+      const correctCell = isCorrect === null
+        ? '<td>—</td>'
+        : `<td class="${isCorrect ? 'correct' : 'incorrect'}">${isCorrect ? 'Yes' : 'No'}</td>`;
       tr.innerHTML =
         `<td>${entry.trial}</td>` +
         `<td>${entry.outcome}</td>` +
-        `<td>${judgement === 'accept' ? 'Accept' : 'Not accept'}</td>` +
-        `<td>${action}</td>` +
-        `<td class="${isCorrect ? 'correct' : 'incorrect'}">${isCorrect ? 'Yes' : 'No'}</td>`;
+        `<td>${judgementLabel}</td>` +
+        `<td>${action}${entry.resolutionType === 'implicit_withhold' ? ' (implicit)' : ''}</td>` +
+        correctCell;
       sessionLogBody.appendChild(tr);
       sessionLogBody.scrollTop = sessionLogBody.scrollHeight;
     }
@@ -734,34 +758,29 @@
       sessionLogRows = 0;
     }
 
-    // Student picked Accept/Not-accept.
-    acceptBtn.addEventListener('click', () => showActionButtons('accept'));
-    notAcceptBtn.addEventListener('click', () => showActionButtons('not_accept'));
-
-    reinforceBtn.addEventListener('click', () => chooseAction('reinforce'));
-    reinstructBtn.addEventListener('click', () => chooseAction('reinstruct'));
-    withholdBtn.addEventListener('click', () => chooseAction('withhold'));
-
-    function chooseAction(action) {
-      if (!pendingTrial) return;
-      const { afterTrialState, trialResult, mode, masked, presentedLevel } = pendingTrial;
+    // ------------------------------------------------------------------
+    // Pending-event queue: resolution windows for free-form Interact.
+    // ------------------------------------------------------------------
+    function applyAndLog(event, option) {
+      const { trialResult, mode, masked, presentedLevel } = event;
+      const resolutionType = option ? 'explicit' : 'implicit_withhold';
+      const action = option ? option.action : 'withhold';
 
       let iconType = null;
-      if (action === 'reinforce') {
-        iconType = randomIcon();
-        lastReinforceIcon = Phrases.pickNoRepeat(Phrases.reinforce.icons, lastReinforceIcon);
-        lastReinforcePhrase = Phrases.pickNoRepeat(Phrases.reinforce.phrases, lastReinforcePhrase);
-        showFeedback(lastReinforceIcon, lastReinforcePhrase);
-      } else if (action === 'reinstruct') {
-        lastReinstructPhrase = Phrases.pickNoRepeat(Phrases.reinstruct.phrases, lastReinstructPhrase);
-        showFeedback(Phrases.reinstruct.icon, lastReinstructPhrase);
-      } else {
-        // withhold: deliberately no phrase — the icon + tooltip is the only cue.
+      // A resolved action implies a judgement for accuracy scoring:
+      // reinforce == "accept", reinstruct/withhold == "not accept".
+      let judgement = action === 'reinforce' ? 'accept' : 'not_accept';
+
+      if (!option) {
+        judgement = null; // unattended is not the same as "judged incorrectly"
         showFeedback(Phrases.withhold.icon, '');
+      } else {
+        if (action === 'reinforce') iconType = randomIcon();
+        showFeedback(option.icon, option.phrase);
       }
 
       const { state: newState, historyEntry } = ChildModel.applyStudentAction(
-        afterTrialState,
+        state,
         trialResult,
         activeGame,
         action,
@@ -772,23 +791,58 @@
       updateReadout();
 
       const groundTruthGenuine = trialResult.outcome === 'genuine_response';
-      const judgementAccepted = studentJudgement === 'accept';
-      const isCorrect = judgementAccepted === groundTruthGenuine;
-      historyEntry.judgement = studentJudgement;
+      const isCorrect = judgement === null ? null : (judgement === 'accept') === groundTruthGenuine;
+      historyEntry.judgement = judgement;
       historyEntry.isCorrect = isCorrect;
       historyEntry.mode = mode;
       historyEntry.masked = masked;
       historyEntry.presentedLevel = presentedLevel;
-      addSessionLogRow(historyEntry, studentJudgement, action, isCorrect);
+      historyEntry.resolutionType = resolutionType;
+      addSessionLogRow(historyEntry, judgement, action, isCorrect);
+    }
 
-      pendingTrial = null;
-      studentJudgement = null;
-      setPresentEnabled(true);
-      // Leave the feedback icon/phrase showing (and both button rows
-      // hidden) until the next presentation's clip finishes and
-      // showJudgementPrompt() re-opens the accept/not-accept prompt.
-      judgementButtons.hidden = true;
-      actionButtons.hidden = true;
+    // Explicit resolution: the student picked a palette option. Resolves
+    // against the oldest still-open pending event, per the brief. If
+    // nothing is pending (idle-loop use of Interact), just no-op — no
+    // event to resolve.
+    function resolveInteraction(optionId) {
+      const option = Phrases.interactOptions.find((o) => o.id === optionId);
+      if (!option) return;
+      const event = pendingEvents.shift();
+      if (!event) return;
+      clearTimeout(event.expiryTimer);
+      applyAndLog(event, option);
+    }
+
+    // Implicit resolution: a window closed with no interaction taken. Only
+    // acts if `id` is still the current head of the queue — a younger
+    // event that happens to expire first waits for the head's own timer,
+    // guaranteeing events resolve in presentation order.
+    function expireEvent(id) {
+      if (!pendingEvents.length || pendingEvents[0].id !== id) return;
+      const event = pendingEvents.shift();
+      applyAndLog(event, null);
+    }
+
+    // Resolves every remaining pending event, oldest-first, as an implicit
+    // withhold — used before a phase switch or session end so nothing is
+    // silently dropped from the log.
+    function flushPendingEvents() {
+      while (pendingEvents.length) {
+        const event = pendingEvents.shift();
+        clearTimeout(event.expiryTimer);
+        applyAndLog(event, null);
+      }
+    }
+
+    // Arms a just-finished clip's resolution window: open for
+    // INTERACTION_GRACE_MS past clip end, after which it auto-resolves as
+    // an implicit withhold unless the student interacts first.
+    function armResolutionWindow(event) {
+      const now = performance.now();
+      event.clipEndedAt = now;
+      event.expiresAt = now + INTERACTION_GRACE_MS;
+      event.expiryTimer = setTimeout(() => expireEvent(event.id), INTERACTION_GRACE_MS);
     }
 
     // ------------------------------------------------------------------
@@ -854,53 +908,67 @@
     // judgement doesn't have anywhere to show a separate contra-ear
     // response in this step, so contraResponded is left false here — masked
     // dual-ear resolution is future scope, not this step's judgement UI).
-    // The chosen *action* is applied later, once the student judges the
-    // clip and picks Reinforce/Re-instruct/Withhold — see chooseAction().
+    // The chosen *action* is applied later, whenever the student presses
+    // Interact and resolves the pending event — see resolveInteraction().
     function resolveResponse(physics) {
       if (sessionFrozen || physics.overmasked) return { testResponded: false, contraResponded: false };
       const trialResult = presentTrial(physics.freq, physics.testEar, physics.testCochleaLevel);
       return { testResponded: trialResult.outcome !== 'no_response', contraResponded: false };
     }
 
-    // Resolves (but does not yet apply) the trial via ChildModel.resolveTrial,
-    // stashes it as pendingTrial for chooseAction() to apply once the
-    // student judges the clip, and plays the resulting clip. Blocks further
-    // presentations until the pending trial is resolved.
+    // Resolves the trial's ground truth via ChildModel.resolveTrial, queues
+    // a pending event (testing phase) for free-form Interact resolution,
+    // and plays the matching clip. Present re-enables at clip end (see
+    // armResolutionWindow()/playClip()'s onFinished), not at judgement —
+    // multiple pending events can be open at once.
     function presentTrial(freq, ear, cochleaLevel) {
       maybeSwitchGame();
 
-      const { state: afterTrialState, trialResult } = ChildModel.resolveTrial(
+      // resolveTrial() only deep-clones `state` (no side effects beyond the
+      // outcome roll), so the clone it returns is discarded — resolution
+      // always applies against the live `state` at resolution time.
+      const { trialResult } = ChildModel.resolveTrial(
         state,
         { freq, ear, cochleaLevel },
         activeGame
       );
       const engineState = engine.getState();
-      pendingTrial = {
-        afterTrialState,
-        trialResult,
-        freq,
-        ear,
-        mode: engineState.testMode,
-        masked: engineState.maskingOn,
-        presentedLevel: engineState.presentedLevel,
-      };
-      setPresentEnabled(false);
+      const isConditioning = state.phase === 'conditioning';
+
+      let event = null;
+      if (!isConditioning) {
+        event = {
+          id: nextEventId++,
+          trialResult,
+          freq,
+          ear,
+          mode: engineState.testMode,
+          masked: engineState.maskingOn,
+          presentedLevel: engineState.presentedLevel,
+          clipEndedAt: null,
+          expiresAt: null,
+          expiryTimer: null,
+        };
+        pendingEvents.push(event);
+      }
 
       // Conditioning phase: always pair the stimulus with reinforcement,
-      // regardless of ground-truth outcome — no judgement is shown or
-      // scored (see autoPairConditioning()). Testing phase plays whichever
-      // clip matches the resolved ground truth, then asks the student to
-      // judge it (showJudgementPrompt()).
-      const isConditioning = afterTrialState.phase === 'conditioning';
+      // regardless of ground-truth outcome — no window is opened or scored
+      // (see autoPairConditioning()). Testing phase plays whichever clip
+      // matches the resolved ground truth, then arms that event's
+      // resolution window once the clip finishes.
       const token = isConditioning ? 'reinforcer_response' : mapOutcomeToToken(trialResult.outcome);
       const effectiveManifest = buildEffectiveManifest(manifest, currentCaseConfig);
       const plan = Scheduler.computeSchedulingPlan(effectiveManifest, token, trialResult.timingOffsetMs);
-      const onClipFinished = isConditioning ? autoPairConditioning : showJudgementPrompt;
+      const onClipFinished = isConditioning
+        ? () => autoPairConditioning(trialResult)
+        : () => { setPresentEnabled(true); armResolutionWindow(event); };
 
       onsetFlash.textContent = '—';
       onsetFlash.classList.remove('on');
       clearTimeout(clipTimer);
       clearTimeout(onsetTimer);
+      setPresentEnabled(false);
       if (plan.playAtMs <= 0) {
         playClip(plan, onClipFinished);
         onsetTimer = setTimeout(showOnsetMarker, -plan.playAtMs);
@@ -919,21 +987,13 @@
     // argument, so this reuses exactly the same conditioning-gain logic
     // step()/stepFromCochleaLevel() use, just entered via resolveTrial()
     // first so the clip could be shown before applying it.
-    function autoPairConditioning() {
-      if (!pendingTrial) return;
-      const { afterTrialState, trialResult } = pendingTrial;
-
+    function autoPairConditioning(trialResult) {
       const iconType = randomIcon();
-      lastReinforceIcon = Phrases.pickNoRepeat(Phrases.reinforce.icons, lastReinforceIcon);
-      lastReinforcePhrase = Phrases.pickNoRepeat(Phrases.reinforce.phrases, lastReinforcePhrase);
-      judgementPanel.hidden = false;
-      judgementPrompt.hidden = true;
-      judgementButtons.hidden = true;
-      actionButtons.hidden = true;
-      showFeedback(lastReinforceIcon, lastReinforcePhrase);
+      const reinforceOption = Phrases.interactOptions.find((o) => o.action === 'reinforce');
+      showFeedback(reinforceOption.icon, reinforceOption.phrase);
 
       const { state: newState, historyEntry } = ChildModel.applyStudentAction(
-        afterTrialState,
+        state,
         trialResult,
         activeGame,
         null,
@@ -943,7 +1003,6 @@
       logTrial(historyEntry);
       updateReadout();
 
-      pendingTrial = null;
       setPresentEnabled(true);
     }
 
@@ -962,9 +1021,11 @@
       if (uiControls) uiControls.refreshDisplayBar();
       if (engine) engine.clearStoredPoints();
 
-      pendingTrial = null;
-      studentJudgement = null;
-      hideJudgementPanel();
+      // Resetting abandons the session — discard any open windows rather
+      // than logging them (matches the old pendingTrial = null behavior).
+      pendingEvents.forEach((event) => clearTimeout(event.expiryTimer));
+      pendingEvents = [];
+      hideInteractPalette();
       feedbackFlash.textContent = '';
       resetSessionLog();
       sessionFrozen = false;
@@ -1122,12 +1183,14 @@
     }
 
     document.getElementById('end-session-btn').addEventListener('click', () => {
+      flushPendingEvents();
       sessionFrozen = true;
       setPresentEnabled(false);
       openSummaryScreen({ frozen: true });
     });
 
     document.getElementById('view-summary-btn').addEventListener('click', () => {
+      flushPendingEvents();
       openSummaryScreen({ frozen: sessionFrozen });
     });
 
@@ -1223,13 +1286,21 @@
     if (resultsShareData) {
       showResultsReviewMode(resultsShareData);
     } else {
+      renderInteractPalette();
       fetch('manifest.json')
         .then((r) => r.json())
         .then((m) => {
           manifest = m;
           idleLoopUrl = Scheduler.getIdleLoopUrl(manifest);
           resetState();
-          uiControls = UiControls.wireUi({ engine, patientModel, dom, resolveResponse });
+          uiControls = UiControls.wireUi({
+            engine,
+            patientModel,
+            dom,
+            resolveResponse,
+            onInteract: toggleInteractPalette,
+            onInteractEscape: hideInteractPalette,
+          });
           playIdleLoop();
           tickElapsed();
         })
