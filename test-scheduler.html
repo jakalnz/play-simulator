@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Scheduler test page</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; }
+  video { width: 100%; background: #000; }
+  .controls { display: flex; gap: 0.5rem; align-items: center; margin: 1rem 0; flex-wrap: wrap; }
+  .readout { font-family: monospace; white-space: pre; background: #f4f4f4; padding: 0.75rem; border-radius: 4px; }
+  button { padding: 0.4rem 0.8rem; }
+</style>
+</head>
+<body>
+  <h1>Scheduler test page</h1>
+  <video id="video" autoplay muted playsinline></video>
+
+  <div class="controls">
+    <label>Outcome:
+      <select id="outcome"></select>
+    </label>
+    <label>Offset (ms):
+      <input id="offset" type="number" value="600" step="50" />
+    </label>
+    <button id="armBtn">Arm</button>
+    <button id="presentBtn">Present Stimulus</button>
+    <button id="resetBtn">Reset</button>
+  </div>
+
+  <div id="readout" class="readout">loading manifest...</div>
+
+  <script src="scheduler.js"></script>
+  <script>
+    let manifest = null;
+    let idleLoopUrl = null;
+
+    let armedPlan = null;
+    let armWallClockMs = null;
+    let stimulusOnsetMs = null;
+    let clipTimer = null;
+    let revertTimer = null;
+
+    const video = document.getElementById('video');
+    const outcomeSelect = document.getElementById('outcome');
+    const offsetInput = document.getElementById('offset');
+    const readout = document.getElementById('readout');
+
+    function playIdleLoop() {
+      if (video.src === idleLoopUrl && !video.paused) return;
+      video.src = idleLoopUrl;
+      video.loop = true;
+      video.play().catch(() => {});
+    }
+
+    function playClip(plan) {
+      video.loop = false;
+      video.src = plan.variantUrl;
+      video.play().catch(() => {});
+
+      const revert = () => {
+        clearTimeout(revertTimer);
+        video.removeEventListener('ended', revert);
+        playIdleLoop();
+      };
+      video.addEventListener('ended', revert);
+      revertTimer = setTimeout(revert, plan.durationMs);
+    }
+
+    function armPlan() {
+      const outcome = outcomeSelect.value;
+      const offsetMs = Number(offsetInput.value) || 0;
+      armedPlan = Scheduler.computeSchedulingPlan(manifest, outcome, offsetMs);
+      armWallClockMs = performance.now();
+
+      if (armedPlan.playAtMs <= 0) {
+        clearTimeout(clipTimer);
+        playClip(armedPlan);
+      }
+    }
+
+    function presentStimulus() {
+      stimulusOnsetMs = performance.now();
+      if (armedPlan && armedPlan.playAtMs > 0) {
+        clearTimeout(clipTimer);
+        clipTimer = setTimeout(() => playClip(armedPlan), armedPlan.playAtMs);
+      }
+    }
+
+    function resetAll() {
+      armedPlan = null;
+      armWallClockMs = null;
+      stimulusOnsetMs = null;
+      clearTimeout(clipTimer);
+      clearTimeout(revertTimer);
+      playIdleLoop();
+    }
+
+    function fmt(ms) {
+      return ms === null ? '—' : Math.round(ms) + 'ms';
+    }
+
+    function tick() {
+      const now = performance.now();
+      const sinceOnset = stimulusOnsetMs === null ? null : now - stimulusOnsetMs;
+      const sinceArm = armWallClockMs === null ? null : now - armWallClockMs;
+
+      readout.textContent =
+        `elapsed since stimulus onset: ${fmt(sinceOnset)}\n` +
+        `elapsed since arm:            ${fmt(sinceArm)}\n` +
+        `armed plan: ${armedPlan ? JSON.stringify(armedPlan, null, 2) : '(none)'}`;
+
+      requestAnimationFrame(tick);
+    }
+
+    document.getElementById('armBtn').addEventListener('click', armPlan);
+    document.getElementById('presentBtn').addEventListener('click', presentStimulus);
+    document.getElementById('resetBtn').addEventListener('click', resetAll);
+
+    fetch('manifest.json')
+      .then((r) => r.json())
+      .then((m) => {
+        manifest = m;
+        idleLoopUrl = Scheduler.getIdleLoopUrl(manifest);
+
+        const tokens = [...new Set(manifest.clips.map((c) => c.token))];
+        outcomeSelect.innerHTML = tokens.map((t) => `<option value="${t}">${t}</option>`).join('');
+
+        playIdleLoop();
+        tick();
+      })
+      .catch((err) => {
+        readout.textContent = 'Failed to load manifest.json: ' + err.message;
+      });
+  </script>
+</body>
+</html>

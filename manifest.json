@@ -1,0 +1,66 @@
+{
+  "baseUrl": "https://pub-3c34b9b7d48143928912374f895ee51c.r2.dev",
+  "clips": [
+    {
+      "token": "clear_response",
+      "variantId": "clear_response_01",
+      "file": "clear_response_01.mp4",
+      "durationMs": 2000,
+      "offsetRange": { "minMs": 300, "maxMs": 1200 }
+    },
+    {
+      "token": "clear_response",
+      "variantId": "clear_response_02",
+      "file": "clear_response_02.mp4",
+      "durationMs": 2000,
+      "offsetRange": { "minMs": 300, "maxMs": 1200 }
+    },
+    {
+      "token": "inconclusive_response",
+      "variantId": "inconclusive_response_01",
+      "file": "inconclusive_response_01.mp4",
+      "durationMs": 2000,
+      "offsetRange": { "minMs": -400, "maxMs": 1800 }
+    },
+    {
+      "token": "inconclusive_response",
+      "variantId": "inconclusive_response_02",
+      "file": "inconclusive_response_02.mp4",
+      "durationMs": 2500,
+      "offsetRange": { "minMs": -400, "maxMs": 1800 }
+    },
+    {
+      "token": "no_response",
+      "variantId": "no_response_01",
+      "file": "no_response_01.mp4",
+      "durationMs": 2000,
+      "offsetRange": null
+    },
+    {
+      "token": "spontaneous_response",
+      "variantId": "spontaneous_response_01",
+      "file": "spontaneous_response_01.mp4",
+      "durationMs": 2000,
+      "offsetRange": { "minMs": -2000, "maxMs": 2500 }
+    },
+    {
+      "token": "off_task",
+      "variantId": "off_task_01",
+      "file": "off_task_01.mp4",
+      "durationMs": 2000,
+      "offsetRange": null
+    },
+    {
+      "token": "reinforcer_response",
+      "variantId": "reinforcer_response_01",
+      "file": "reinforcer_response_01.mp4",
+      "durationMs": 2000,
+      "offsetRange": null
+    }
+  ],
+  "idleLoop": {
+    "variantId": "idle_loop_01",
+    "file": "idle_loop_01.mp4",
+    "durationMs": 4000
+  }
+}

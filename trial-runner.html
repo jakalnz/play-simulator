@@ -1,0 +1,757 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Trial runner</title>
+<link rel="stylesheet" href="css/base.css" />
+<link rel="stylesheet" href="css/layout.css" />
+<link rel="stylesheet" href="css/controls.css" />
+<style>
+  body { font-family: system-ui, sans-serif; }
+  .page { max-width: 1200px; margin: 1.5rem auto; padding: 0 1rem; }
+  video { width: 100%; max-width: 480px; background: #000; display: block; }
+  .onset-flash { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 4px; background: #ddd; margin-left: 0.5rem; }
+  .onset-flash.on { background: #ffd54f; }
+  .top-controls { display: flex; gap: 0.5rem; align-items: center; margin: 0.75rem 0; flex-wrap: wrap; }
+  .readout, .log { font-family: monospace; white-space: pre; background: #f4f4f4; padding: 0.75rem; border-radius: 4px; overflow-x: auto; }
+  .log { max-height: 260px; overflow-y: auto; font-size: 0.8rem; }
+  button { padding: 0.4rem 0.8rem; }
+  h2 { margin-top: 1.5rem; }
+  .audiometer-wrap { margin: 1rem 0; }
+  .judgement-panel { margin: 1rem 0; padding: 1rem; border: 1px solid #d8dadf; border-radius: 8px; background: #fff; min-height: 4.5rem; }
+  .judgement-panel[hidden] { display: none; }
+  .judgement-panel__prompt { font-weight: 600; margin-bottom: 0.6rem; }
+  .judgement-panel__buttons { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+  .judgement-panel__buttons[hidden] { display: none; }
+  .judgement-btn { font-size: 1rem; padding: 0.6rem 1.2rem; border-radius: 6px; border: 2px solid #d8dadf; background: #fff; cursor: pointer; }
+  .judgement-btn.accept { border-color: #1f8a2f; }
+  .judgement-btn.not-accept { border-color: #b30000; }
+  .judgement-btn.reinforce { border-color: #1f8a2f; background: #eaf7ec; }
+  .judgement-btn.reinstruct { border-color: #1f5fd2; background: #eaf0fb; }
+  .judgement-btn.withhold { border-color: #888; background: #f0f0f0; }
+  .feedback-flash { display: flex; align-items: center; gap: 0.6rem; font-size: 1.1rem; padding: 0.4rem 0; }
+  .feedback-flash__icon { font-size: 1.8rem; }
+  .session-log { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  .session-log th, .session-log td { border: 1px solid #d8dadf; padding: 0.3rem 0.5rem; text-align: left; }
+  .session-log tbody { display: block; max-height: 260px; overflow-y: auto; }
+  .session-log thead, .session-log tbody tr { display: table; width: 100%; table-layout: fixed; }
+  .session-log .correct { color: #1f8a2f; font-weight: 600; }
+  .session-log .incorrect { color: #b30000; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Trial runner (childModel + audiometer controls)</h1>
+
+  <div class="top-controls">
+    <label>Case:
+      <select id="caseSelect"></select>
+    </label>
+    <label>Strategy:
+      <select id="strategySelect"></select>
+    </label>
+    <button id="resetBtn">Reset state</button>
+  </div>
+
+  <video id="video" autoplay muted playsinline></video>
+  <div class="top-controls">
+    <span>Stimulus onset: <span id="onsetFlash" class="onset-flash">—</span></span>
+    <span id="elapsedReadout"></span>
+  </div>
+
+  <h2>Audiometer</h2>
+  <div class="audiometer-wrap">
+    <div class="app">
+      <div class="display-bar">
+        <div class="display-bar__stimulus" id="stimulus-panel" role="button" tabindex="0" aria-label="Store threshold">
+          <div class="display-bar__level" id="stimulus-level">40 dB</div>
+          <div class="display-bar__label" id="stimulus-label">Stimulus Tone - AC Transducer - Right</div>
+        </div>
+        <div class="display-bar__freq" id="freq-panel">
+          <span id="freq-readout">1000 Hz</span>
+        </div>
+        <div class="display-bar__masking" id="masking-panel" role="button" tabindex="0" aria-label="Mark no response">
+          <div class="display-bar__level" id="masking-level">[ 0 dB ]</div>
+          <div class="display-bar__label" id="masking-label">NBN - AC Transducer - Left Masking</div>
+        </div>
+      </div>
+
+      <div class="quick-select panel">
+        <div class="row row--primary" style="grid-row: r1;">
+          <span class="field-label">Ear</span>
+          <div class="toggle-group primary-toggle" role="group" aria-label="Test ear">
+            <button data-ear="right">Right</button>
+            <button data-ear="left">Left</button>
+          </div>
+        </div>
+
+        <div class="row row--primary" style="grid-row: r2;">
+          <span class="field-label">Mode</span>
+          <div class="toggle-group primary-toggle" role="group" aria-label="Test mode">
+            <button data-mode="AC">AC</button>
+            <button data-mode="BC">BC</button>
+          </div>
+        </div>
+
+        <div class="row row--primary" style="grid-row: r3;">
+          <span class="field-label">Freq</span>
+          <div class="freq-step">
+            <button id="freq-prev" class="touch-target">◀</button>
+            <span class="freq-hint" id="freq-hint-readout">—</span>
+            <button id="freq-next" class="touch-target">▶</button>
+          </div>
+        </div>
+
+        <div class="row updown-row" style="grid-row: r4;">
+          <div class="updown-col">
+            <span class="field-label updown-col__title">Level</span>
+            <div class="updown-group updown-group--wide">
+              <button id="level-up" aria-label="Increase level">▲</button>
+              <button id="level-down" aria-label="Decrease level">▼</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="row" style="grid-row: r5;">
+          <button id="present-btn" class="present-btn">Present</button>
+        </div>
+
+        <div class="sound-status" id="sound-status-flag" style="grid-row: r8;">Sound: ON · Up=Louder</div>
+      </div>
+
+      <div class="chart-panel panel">
+        <h3>Stored thresholds</h3>
+        <div class="stored-points-list" id="stored-points-list"></div>
+        <div class="row chart-response-row">
+          <button id="no-response-btn" class="touch-target">No Response</button>
+          <button id="store-btn" class="touch-target">Store (S)</button>
+          <button id="delete-point-btn" class="touch-target" title="Delete the stored point at the current ear/mode/frequency/masking">Del</button>
+        </div>
+        <details class="visual-details" id="visual-details" open>
+          <summary>Visual — Cochlea Levels (hint)</summary>
+          <table class="visual-table">
+            <thead>
+              <tr><th></th><th>Right Cochlea</th><th>Left Cochlea</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Tone Level</td><td id="visual-right-tone">—</td><td id="visual-left-tone">—</td></tr>
+              <tr><td>Masker Level</td><td id="visual-right-masker">—</td><td id="visual-left-masker">—</td></tr>
+              <tr><td>Threshold</td><td id="visual-right-threshold">—</td><td id="visual-left-threshold">—</td></tr>
+              <tr><td>Response</td><td id="visual-right-response">—</td><td id="visual-left-response">—</td></tr>
+              <tr><td>Last Level</td><td id="visual-right-last">—</td><td id="visual-left-last">—</td></tr>
+            </tbody>
+          </table>
+        </details>
+      </div>
+
+      <div class="mask-panel panel">
+        <div class="transducer-toggle" role="group" aria-label="AC Transducer type" style="grid-row: r1;">
+          <button data-transducer="headphone">Headphone</button>
+          <button data-transducer="insertphone">Insert</button>
+        </div>
+        <button id="transducer-switch" class="switch-btn transducer-switch" type="button" style="grid-row: r1;" aria-pressed="false">Headphone</button>
+
+        <div class="row masking-hint-row" style="grid-row: r2;">
+          <span class="masking-required" id="masking-required-flag">MASKING REQUIRED</span>
+        </div>
+
+        <div class="row updown-row" style="grid-row: r4;">
+          <div class="updown-col">
+            <span class="field-label updown-col__title">Masking</span>
+            <div class="updown-group updown-group--wide">
+              <button id="mask-up" aria-label="Increase masking level">▲</button>
+              <button id="mask-down" aria-label="Decrease masking level">▼</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="row row--primary" style="grid-row: r5;">
+          <span class="field-label">Masking</span>
+          <div class="toggle-group primary-toggle" role="group" aria-label="Masking">
+            <button id="mask-on-btn" data-masking="on">On</button>
+            <button id="mask-off-btn" data-masking="off">Off</button>
+          </div>
+        </div>
+
+        <div class="hints-status" id="hints-status-flag" style="grid-row: r8;">Hints: ON</div>
+      </div>
+
+      <div class="app-footer panel">
+        <button id="direction-switch" class="switch-btn" type="button" aria-pressed="true">Up = Louder</button>
+        <button id="sound-switch" class="switch-btn" type="button" aria-pressed="true">Tone: On</button>
+        <button id="hints-switch" class="switch-btn" type="button" aria-pressed="true">Hints: On</button>
+      </div>
+    </div>
+  </div>
+
+  <h2>Student judgement</h2>
+  <div class="judgement-panel" id="judgement-panel" hidden>
+    <div class="judgement-panel__prompt" id="judgement-prompt">Was that a genuine response?</div>
+    <div class="judgement-panel__buttons" id="judgement-buttons">
+      <button class="judgement-btn accept" id="accept-btn">Accept</button>
+      <button class="judgement-btn not-accept" id="not-accept-btn">Not accept</button>
+    </div>
+    <div class="judgement-panel__buttons" id="action-buttons" hidden>
+      <button class="judgement-btn reinforce" id="reinforce-btn">Reinforce</button>
+      <button class="judgement-btn reinstruct" id="reinstruct-btn">Re-instruct</button>
+      <button class="judgement-btn withhold" id="withhold-btn" title="No reward, no guidance" aria-label="Withhold — no reward, no guidance">Withhold</button>
+    </div>
+    <div class="feedback-flash" id="feedback-flash"></div>
+  </div>
+
+  <h2>Session log</h2>
+  <div style="overflow-x: auto;">
+    <table class="session-log">
+      <thead>
+        <tr><th>#</th><th>Outcome</th><th>Judgement</th><th>Action</th><th>Correct?</th></tr>
+      </thead>
+      <tbody id="session-log-body"></tbody>
+    </table>
+  </div>
+
+  <h2>Batch run (no video, logic only)</h2>
+  <div class="top-controls">
+    <label>N trials:
+      <input id="nInput" type="number" value="250" step="10" min="1" />
+    </label>
+    <button id="runBatchBtn">Run N trials</button>
+  </div>
+
+  <h2>State</h2>
+  <div id="readout" class="readout">loading…</div>
+
+  <h2>Trial log (most recent last, capped at 200 rows)</h2>
+  <div id="log" class="log"></div>
+
+  <script src="childModel.js"></script>
+  <script src="scheduler.js"></script>
+  <script src="sampleCases.js"></script>
+  <script src="phrases.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/masking-logic.js"></script>
+  <script src="js/tone-player.js"></script>
+  <script src="js/noise-player.js"></script>
+  <script src="js/audiometer-engine.js"></script>
+  <script src="js/ui-controls.js"></script>
+  <script>
+    const FREQS = window.PtaUtils.FREQUENCIES; // [500, 1000, 2000, 4000] — matches childModel's case data
+
+    // Mirrors testHarness.js's `strategies` exactly — keep in sync so batch
+    // trajectories here match the console harness for the same case/strategy.
+    const strategies = {
+      alwaysCorrect: (trialResult) => {
+        if (trialResult.outcome === 'genuine_response') return 'reinforce';
+        if (trialResult.outcome === 'false_positive') return 'reinstruct';
+        return 'withhold';
+      },
+      alwaysReinforceEverything: (trialResult) => {
+        return trialResult.outcome === 'no_response' ? 'withhold' : 'reinforce';
+      },
+      random: () => {
+        const actions = ['reinforce', 'reinstruct', 'withhold'];
+        return actions[Math.floor(Math.random() * actions.length)];
+      },
+    };
+
+    // childModel.js outcomes -> manifest.json clip tokens.
+    function mapOutcomeToToken(outcome) {
+      switch (outcome) {
+        case 'genuine_response': return 'clear_response';
+        case 'false_positive': return 'spontaneous_response';
+        case 'no_response': return 'no_response';
+        default: throw new Error('Unmapped outcome: ' + outcome);
+      }
+    }
+
+    function clampDb(v) {
+      return Math.max(-10, Math.min(100, v));
+    }
+
+    function randomStimulus(trueThreshold) {
+      const freq = FREQS[Math.floor(Math.random() * FREQS.length)];
+      // Batch mode has no ear/masking physics — targets the right ear, same
+      // as childModel.js's runTrial() compat wrapper.
+      const threshold = trueThreshold.right[freq];
+      const dB = clampDb(threshold + (Math.random() * 40 - 15));
+      return { freq, dB: Math.round(dB) };
+    }
+
+    // ------------------------------------------------------------------
+    // Minimal patientModel adapter for the audiometer engine.
+    // ------------------------------------------------------------------
+    // The engine only needs physics inputs, not a full threshold/hysteresis
+    // model (childModel.js owns the response decision) — see
+    // js/audiometer-engine.js's file header. ipsiConductive defaults to 0
+    // (this repo's case data doesn't yet split conductive/cochlear
+    // components of a loss); cross-IAA defaults mirror the source
+    // simulator's headphone/insert rows. getThreshold reads directly from
+    // childModel's per-ear trueThreshold and is used only for the
+    // masking-required hint and overmasking check — never to decide if the
+    // presented tone itself is heard. AC and BC share the same threshold
+    // value since case data doesn't model a separate BC threshold yet.
+    function createPatientModelAdapter(getState) {
+      function headphoneCross(freq) {
+        return 40;
+      }
+      function insertphoneCross(freq) {
+        return freq <= 1000 ? 60 : 50;
+      }
+      return {
+        getParam(ear, param, freq) {
+          if (param === 'ipsiConductive') return 0;
+          return 0;
+        },
+        getCrossIAA(transducer, freq) {
+          return transducer === 'insertphone' ? insertphoneCross(freq) : headphoneCross(freq);
+        },
+        getThreshold(ear, mode, freq) {
+          const t = getState().trueThreshold[ear][freq];
+          return t == null ? 0 : t;
+        },
+      };
+    }
+
+    // ------------------------------------------------------------------
+    // Setup
+    // ------------------------------------------------------------------
+    const ModelConfig = ChildModel.CONFIG;
+    const CONDITIONING_TRIALS = 40; // mirrors testHarness.js runSimulation default
+    const GAME_SWITCH_EVERY = 35; // mirrors testHarness.js runSimulation default
+
+    let manifest = null;
+    let idleLoopUrl = null;
+    let state = null;
+    let activeGame = null;
+    let gameIdx = 0;
+    let trialCount = 0;
+
+    let clipTimer = null;
+    let revertTimer = null;
+    let onsetTimer = null;
+    let stimulusOnsetMs = null;
+
+    const video = document.getElementById('video');
+    const caseSelect = document.getElementById('caseSelect');
+    const strategySelect = document.getElementById('strategySelect');
+    const readout = document.getElementById('readout');
+    const logEl = document.getElementById('log');
+    const onsetFlash = document.getElementById('onsetFlash');
+    const elapsedReadout = document.getElementById('elapsedReadout');
+
+    caseSelect.innerHTML = Object.keys(SampleCases)
+      .map((k) => `<option value="${k}">${k}</option>`)
+      .join('');
+    caseSelect.value = 'hardChild'; // matches step 1's validated CSV trajectory
+
+    strategySelect.innerHTML = Object.keys(strategies)
+      .map((k) => `<option value="${k}">${k}</option>`)
+      .join('');
+    // strategySelect now only drives the headless "Batch run" section below
+    // (regression/logic testing) — the main interactive flow above is
+    // driven by real student judgement, not this auto-driver.
+
+    // ------------------------------------------------------------------
+    // Student judgement UI state
+    // ------------------------------------------------------------------
+    const judgementPanel = document.getElementById('judgement-panel');
+    const judgementButtons = document.getElementById('judgement-buttons');
+    const actionButtons = document.getElementById('action-buttons');
+    const acceptBtn = document.getElementById('accept-btn');
+    const notAcceptBtn = document.getElementById('not-accept-btn');
+    const reinforceBtn = document.getElementById('reinforce-btn');
+    const reinstructBtn = document.getElementById('reinstruct-btn');
+    const withholdBtn = document.getElementById('withhold-btn');
+    const feedbackFlash = document.getElementById('feedback-flash');
+    const sessionLogBody = document.getElementById('session-log-body');
+
+    let pendingTrial = null; // { afterTrialState, trialResult, ear, freq }
+    let studentJudgement = null; // 'accept' | 'not_accept'
+    let lastReinforceIcon = null;
+    let lastReinforcePhrase = null;
+    let lastReinstructPhrase = null;
+    let sessionLogRows = 0;
+
+    function setPresentEnabled(enabled) {
+      dom.presentBtn.disabled = !enabled;
+    }
+
+    function showJudgementPrompt() {
+      judgementButtons.hidden = false;
+      actionButtons.hidden = true;
+      feedbackFlash.textContent = '';
+      judgementPanel.hidden = false;
+    }
+
+    function showActionButtons(judgement) {
+      studentJudgement = judgement;
+      judgementButtons.hidden = true;
+      actionButtons.hidden = false;
+      reinforceBtn.hidden = judgement !== 'accept';
+      reinstructBtn.hidden = judgement !== 'not_accept';
+      withholdBtn.hidden = judgement !== 'not_accept';
+    }
+
+    function hideJudgementPanel() {
+      judgementPanel.hidden = true;
+      judgementButtons.hidden = false;
+      actionButtons.hidden = true;
+      studentJudgement = null;
+    }
+
+    function showFeedback(icon, phrase) {
+      feedbackFlash.innerHTML = '';
+      const iconEl = document.createElement('span');
+      iconEl.className = 'feedback-flash__icon';
+      iconEl.textContent = icon;
+      feedbackFlash.appendChild(iconEl);
+      if (phrase) {
+        const textEl = document.createElement('span');
+        textEl.textContent = phrase;
+        feedbackFlash.appendChild(textEl);
+      }
+    }
+
+    function addSessionLogRow(entry, judgement, action, isCorrect) {
+      sessionLogRows += 1;
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        `<td>${entry.trial}</td>` +
+        `<td>${entry.outcome}</td>` +
+        `<td>${judgement === 'accept' ? 'Accept' : 'Not accept'}</td>` +
+        `<td>${action}</td>` +
+        `<td class="${isCorrect ? 'correct' : 'incorrect'}">${isCorrect ? 'Yes' : 'No'}</td>`;
+      sessionLogBody.appendChild(tr);
+      sessionLogBody.scrollTop = sessionLogBody.scrollHeight;
+    }
+
+    function resetSessionLog() {
+      sessionLogBody.innerHTML = '';
+      sessionLogRows = 0;
+    }
+
+    // Student picked Accept/Not-accept.
+    acceptBtn.addEventListener('click', () => showActionButtons('accept'));
+    notAcceptBtn.addEventListener('click', () => showActionButtons('not_accept'));
+
+    reinforceBtn.addEventListener('click', () => chooseAction('reinforce'));
+    reinstructBtn.addEventListener('click', () => chooseAction('reinstruct'));
+    withholdBtn.addEventListener('click', () => chooseAction('withhold'));
+
+    function chooseAction(action) {
+      if (!pendingTrial) return;
+      const { afterTrialState, trialResult } = pendingTrial;
+
+      let iconType = null;
+      if (action === 'reinforce') {
+        iconType = randomIcon();
+        lastReinforceIcon = Phrases.pickNoRepeat(Phrases.reinforce.icons, lastReinforceIcon);
+        lastReinforcePhrase = Phrases.pickNoRepeat(Phrases.reinforce.phrases, lastReinforcePhrase);
+        showFeedback(lastReinforceIcon, lastReinforcePhrase);
+      } else if (action === 'reinstruct') {
+        lastReinstructPhrase = Phrases.pickNoRepeat(Phrases.reinstruct.phrases, lastReinstructPhrase);
+        showFeedback(Phrases.reinstruct.icon, lastReinstructPhrase);
+      } else {
+        // withhold: deliberately no phrase — the icon + tooltip is the only cue.
+        showFeedback(Phrases.withhold.icon, '');
+      }
+
+      const { state: newState, historyEntry } = ChildModel.applyStudentAction(
+        afterTrialState,
+        trialResult,
+        activeGame,
+        action,
+        iconType
+      );
+      state = newState;
+      logTrial(historyEntry);
+      updateReadout();
+
+      const groundTruthGenuine = trialResult.outcome === 'genuine_response';
+      const judgementAccepted = studentJudgement === 'accept';
+      const isCorrect = judgementAccepted === groundTruthGenuine;
+      addSessionLogRow(historyEntry, studentJudgement, action, isCorrect);
+
+      pendingTrial = null;
+      studentJudgement = null;
+      setPresentEnabled(true);
+      // Leave the feedback icon/phrase showing (and both button rows
+      // hidden) until the next presentation's clip finishes and
+      // showJudgementPrompt() re-opens the accept/not-accept prompt.
+      judgementButtons.hidden = true;
+      actionButtons.hidden = true;
+    }
+
+    // ------------------------------------------------------------------
+    // Audiometer engine + UI wiring
+    // ------------------------------------------------------------------
+    const patientModel = createPatientModelAdapter(() => state);
+    const engine = AudiometerEngine.createAudiometerEngine(patientModel);
+
+    const dom = {
+      earButtons: [...document.querySelectorAll('[data-ear]')],
+      modeButtons: [...document.querySelectorAll('[data-mode]')],
+      transducerButtons: [...document.querySelectorAll('[data-transducer]')],
+      transducerSwitch: document.getElementById('transducer-switch'),
+      directionSwitch: document.getElementById('direction-switch'),
+      maskOnBtn: document.getElementById('mask-on-btn'),
+      maskOffBtn: document.getElementById('mask-off-btn'),
+      levelUpBtn: document.getElementById('level-up'),
+      levelDownBtn: document.getElementById('level-down'),
+      freqPrevBtn: document.getElementById('freq-prev'),
+      freqNextBtn: document.getElementById('freq-next'),
+      maskUpBtn: document.getElementById('mask-up'),
+      maskDownBtn: document.getElementById('mask-down'),
+      noResponseBtn: document.getElementById('no-response-btn'),
+      storeBtn: document.getElementById('store-btn'),
+      deletePointBtn: document.getElementById('delete-point-btn'),
+      presentBtn: document.getElementById('present-btn'),
+      soundSwitch: document.getElementById('sound-switch'),
+      hintsSwitch: document.getElementById('hints-switch'),
+      stimulusPanel: document.getElementById('stimulus-panel'),
+      maskingPanel: document.getElementById('masking-panel'),
+      stimulusLevel: document.getElementById('stimulus-level'),
+      freqReadout: document.getElementById('freq-readout'),
+      freqHintReadout: document.getElementById('freq-hint-readout'),
+      maskingLevel: document.getElementById('masking-level'),
+      stimulusLabel: document.getElementById('stimulus-label'),
+      maskingLabel: document.getElementById('masking-label'),
+      soundStatusFlag: document.getElementById('sound-status-flag'),
+      hintsStatusFlag: document.getElementById('hints-status-flag'),
+      maskingRequiredFlag: document.getElementById('masking-required-flag'),
+      freqPanel: document.getElementById('freq-panel'),
+      visualDetails: document.getElementById('visual-details'),
+      storedPointsList: document.getElementById('stored-points-list'),
+      visual: {
+        right: {
+          tone: document.getElementById('visual-right-tone'),
+          masker: document.getElementById('visual-right-masker'),
+          threshold: document.getElementById('visual-right-threshold'),
+          response: document.getElementById('visual-right-response'),
+          last: document.getElementById('visual-right-last'),
+        },
+        left: {
+          tone: document.getElementById('visual-left-tone'),
+          masker: document.getElementById('visual-left-masker'),
+          threshold: document.getElementById('visual-left-threshold'),
+          response: document.getElementById('visual-left-response'),
+          last: document.getElementById('visual-left-last'),
+        },
+      },
+    };
+
+    // Bridges the audiometer engine's physics to childModel.js's outcome
+    // resolution: resolves the test ear only (a single clip -> single
+    // judgement doesn't have anywhere to show a separate contra-ear
+    // response in this step, so contraResponded is left false here — masked
+    // dual-ear resolution is future scope, not this step's judgement UI).
+    // The chosen *action* is applied later, once the student judges the
+    // clip and picks Reinforce/Re-instruct/Withhold — see chooseAction().
+    function resolveResponse(physics) {
+      if (physics.overmasked) return { testResponded: false, contraResponded: false };
+      const trialResult = presentTrial(physics.freq, physics.testEar, physics.testCochleaLevel);
+      return { testResponded: trialResult.outcome !== 'no_response', contraResponded: false };
+    }
+
+    // Resolves (but does not yet apply) the trial via ChildModel.resolveTrial,
+    // stashes it as pendingTrial for chooseAction() to apply once the
+    // student judges the clip, and plays the resulting clip. Blocks further
+    // presentations until the pending trial is resolved.
+    function presentTrial(freq, ear, cochleaLevel) {
+      maybeEndConditioning();
+      maybeSwitchGame();
+
+      const { state: afterTrialState, trialResult } = ChildModel.resolveTrial(
+        state,
+        { freq, ear, cochleaLevel },
+        activeGame
+      );
+      pendingTrial = { afterTrialState, trialResult, freq, ear };
+      setPresentEnabled(false);
+
+      const token = mapOutcomeToToken(trialResult.outcome);
+      const plan = Scheduler.computeSchedulingPlan(manifest, token, trialResult.timingOffsetMs);
+
+      onsetFlash.textContent = '—';
+      onsetFlash.classList.remove('on');
+      clearTimeout(clipTimer);
+      clearTimeout(onsetTimer);
+      if (plan.playAtMs <= 0) {
+        playClip(plan, showJudgementPrompt);
+        onsetTimer = setTimeout(showOnsetMarker, -plan.playAtMs);
+      } else {
+        showOnsetMarker();
+        clipTimer = setTimeout(() => playClip(plan, showJudgementPrompt), plan.playAtMs);
+      }
+
+      return trialResult;
+    }
+
+    let uiControls = null;
+
+    function resetState() {
+      const caseConfig = SampleCases[caseSelect.value];
+      state = ChildModel.createChildState(caseConfig);
+      // This step assumes the testing phase throughout (conditioning
+      // phase's auto-reinforce flow is separate, out-of-scope work) —
+      // force it regardless of the case config's startingPhase.
+      state.phase = 'testing';
+      activeGame = ModelConfig.games[0];
+      gameIdx = 0;
+      trialCount = 0;
+      logEl.textContent = '';
+      updateReadout();
+      if (uiControls) uiControls.refreshDisplayBar();
+
+      pendingTrial = null;
+      studentJudgement = null;
+      hideJudgementPanel();
+      feedbackFlash.textContent = '';
+      resetSessionLog();
+      setPresentEnabled(true);
+    }
+
+    function randomIcon() {
+      const icons = ModelConfig.icons;
+      return icons[Math.floor(Math.random() * icons.length)];
+    }
+
+    function logTrial(entry, extra) {
+      trialCount = entry.trial;
+      const line =
+        `#${entry.trial} phase=${entry.phase} game=${entry.activeGame} outcome=${entry.outcome} ` +
+        `action=${entry.action} offset=${Math.round(entry.timingOffsetMs)}ms` +
+        (extra ? ` ${extra}` : '') +
+        ` | cond=${entry.conditioningLevel.toFixed(1)} eng=${entry.engagementLevel.toFixed(1)} ` +
+        `fat=${entry.fatigueLevel.toFixed(1)} fpRatio=${entry.falsePositiveRatio.toFixed(2)}\n`;
+      logEl.textContent += line;
+      const lines = logEl.textContent.split('\n');
+      if (lines.length > 201) {
+        logEl.textContent = lines.slice(lines.length - 201).join('\n');
+      }
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function updateReadout() {
+      const g = state.games[activeGame];
+      readout.textContent =
+        `trial:              ${trialCount}\n` +
+        `phase:              ${state.phase}\n` +
+        `activeGame:         ${activeGame}\n` +
+        `conditioningLevel:  ${g.conditioningLevel.toFixed(1)}\n` +
+        `engagementLevel:    ${state.engagementLevel.toFixed(1)}\n` +
+        `fatigueLevel:       ${state.fatigueLevel.toFixed(1)}\n` +
+        `falsePositiveRatio: ${state.falsePositiveRatio.toFixed(2)}\n` +
+        `isUnconditioned:    ${g.isUnconditioned}\n` +
+        `responseBudget:     ${state.responseBudget}`;
+    }
+
+    function maybeSwitchGame() {
+      if (trialCount > 0 && trialCount % GAME_SWITCH_EVERY === 0) {
+        gameIdx = (gameIdx + 1) % ModelConfig.games.length;
+        activeGame = ModelConfig.games[gameIdx];
+        state = ChildModel.switchGame(state, activeGame);
+      }
+    }
+
+    function maybeEndConditioning() {
+      if (state.phase === 'conditioning' && trialCount + 1 > CONDITIONING_TRIALS) {
+        state.phase = 'testing';
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // Video playback (idle loop <-> clip)
+    // ------------------------------------------------------------------
+    function playIdleLoop() {
+      if (video.src === idleLoopUrl && !video.paused) return;
+      video.src = idleLoopUrl;
+      video.loop = true;
+      video.play().catch(() => {});
+    }
+
+    function playClip(plan, onFinished) {
+      video.loop = false;
+      video.src = plan.variantUrl;
+      video.play().catch(() => {});
+
+      clearTimeout(revertTimer);
+      const revert = () => {
+        video.removeEventListener('ended', revert);
+        playIdleLoop();
+        if (onFinished) onFinished();
+      };
+      video.addEventListener('ended', revert);
+      revertTimer = setTimeout(revert, plan.durationMs);
+    }
+
+    function showOnsetMarker() {
+      stimulusOnsetMs = performance.now();
+      onsetFlash.textContent = 'PRESENTED';
+      onsetFlash.classList.add('on');
+    }
+
+    // ------------------------------------------------------------------
+    // Batch run: dB-based compat path (ChildModel.step), no video/audiometer.
+    // ------------------------------------------------------------------
+    function runBatch() {
+      const n = Math.max(1, Number(document.getElementById('nInput').value) || 1);
+      clearTimeout(clipTimer);
+      clearTimeout(onsetTimer);
+      const strategyFn = strategies[strategySelect.value];
+
+      for (let i = 0; i < n; i++) {
+        maybeEndConditioning();
+        maybeSwitchGame();
+
+        const stimulus = randomStimulus(state.trueThreshold);
+        const icon = randomIcon();
+        const { state: newState, historyEntry } = ChildModel.step(
+          state,
+          stimulus,
+          activeGame,
+          strategyFn,
+          icon
+        );
+        state = newState;
+
+        const token = mapOutcomeToToken(historyEntry.outcome);
+        const plan = Scheduler.computeSchedulingPlan(manifest, token, historyEntry.timingOffsetMs);
+
+        if (i % 10 === 0 || i === n - 1) {
+          logTrial(historyEntry, `-> clip=${plan.token}/${plan.variantId} playAt=${Math.round(plan.playAtMs)}ms`);
+        }
+      }
+      updateReadout();
+    }
+
+    // ------------------------------------------------------------------
+    // Wire up controls
+    // ------------------------------------------------------------------
+    document.getElementById('resetBtn').addEventListener('click', resetState);
+    document.getElementById('runBatchBtn').addEventListener('click', runBatch);
+    caseSelect.addEventListener('change', resetState);
+
+    function tickElapsed() {
+      if (stimulusOnsetMs !== null) {
+        elapsedReadout.textContent = `elapsed since onset: ${Math.round(performance.now() - stimulusOnsetMs)}ms`;
+      }
+      requestAnimationFrame(tickElapsed);
+    }
+
+    fetch('manifest.json')
+      .then((r) => r.json())
+      .then((m) => {
+        manifest = m;
+        idleLoopUrl = Scheduler.getIdleLoopUrl(manifest);
+        resetState();
+        uiControls = UiControls.wireUi({ engine, patientModel, dom, resolveResponse });
+        playIdleLoop();
+        tickElapsed();
+      })
+      .catch((err) => {
+        readout.textContent = 'Failed to load manifest.json: ' + err.message;
+      });
+  </script>
+</div>
+</body>
+</html>

@@ -1,0 +1,82 @@
+/* Trimmed from jakalnz/pta-simulator css/layout.css: this step has no
+   audiogram canvas, gutter drawer, or rotate-hint banner, so the
+   audiogram-canvas-wrap sizing, the mobile-landscape gutter-drawer block,
+   and the portrait rotate-hint rules are dropped. Grid layout (three
+   columns sharing row tracks via subgrid) and the portrait stacking
+   fallback are kept unchanged. */
+.app {
+  display: grid;
+  grid-template-columns: 260px 1fr 200px;
+  grid-template-rows: auto [r1] auto [r2] auto [r3] auto [r4] auto [r5] auto [r6] auto [r7] auto [r8] auto [footer] auto;
+  gap: 12px;
+  min-height: 100vh;
+  padding: 12px;
+}
+
+.display-bar {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+
+.quick-select,
+.chart-panel,
+.mask-panel {
+  grid-row: r1 / footer;
+}
+
+.quick-select {
+  grid-column: 1;
+}
+
+.chart-panel {
+  grid-column: 2;
+}
+
+.mask-panel {
+  grid-column: 3;
+}
+
+/* quick-select and mask-panel subgrid their rows from .app so row r1..r8
+   resolve to the same shared tracks in both columns. */
+.quick-select,
+.mask-panel {
+  display: grid;
+  grid-template-rows: subgrid;
+  align-content: start;
+  row-gap: 12px;
+}
+
+.chart-panel {
+  min-height: 400px;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-footer {
+  grid-column: 1 / -1;
+  grid-row: footer;
+}
+
+@media (max-width: 720px) and (orientation: portrait) {
+  .app {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .display-bar,
+  .quick-select,
+  .chart-panel,
+  .mask-panel,
+  .app-footer {
+    grid-row: auto;
+    grid-column: auto;
+  }
+
+  .quick-select,
+  .mask-panel {
+    display: flex;
+    grid-template-rows: none;
+    overflow-x: auto;
+    gap: 8px;
+  }
+}
