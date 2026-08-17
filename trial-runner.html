@@ -31,8 +31,6 @@
   .student-state-panel__label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; color: #666; }
   .student-state-panel__value { font-size: 1.2rem; font-weight: 700; }
   .student-state-panel__value.flag-on { color: #b30000; }
-  .onset-flash { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 4px; background: #ddd; margin-left: 0.5rem; }
-  .onset-flash.on { background: #ffd54f; }
   .top-controls { display: flex; gap: 0.5rem; align-items: center; margin: 0.75rem 0; flex-wrap: wrap; }
   .readout, .log { font-family: monospace; white-space: pre; background: #f4f4f4; padding: 0.75rem; border-radius: 4px; overflow-x: auto; }
   .log { max-height: 260px; overflow-y: auto; font-size: 0.8rem; }
@@ -175,10 +173,6 @@
         <div class="chart-video-row">
           <div class="chart-video-row__video">
             <video id="video" autoplay muted playsinline></video>
-            <div class="top-controls">
-              <span>Onset: <span id="onsetFlash" class="onset-flash">—</span></span>
-              <span id="elapsedReadout"></span>
-            </div>
           </div>
           <div class="chart-video-row__audiogram">
             <div class="audiogram-canvas-wrap">
@@ -530,15 +524,12 @@
     let clipTimer = null;
     let revertTimer = null;
     let onsetTimer = null;
-    let stimulusOnsetMs = null;
 
     const video = document.getElementById('video');
     const caseSelect = document.getElementById('caseSelect');
     const strategySelect = document.getElementById('strategySelect');
     const readout = document.getElementById('readout');
     const logEl = document.getElementById('log');
-    const onsetFlash = document.getElementById('onsetFlash');
-    const elapsedReadout = document.getElementById('elapsedReadout');
 
     // ------------------------------------------------------------------
     // Step 9: a shared/exported results link takes priority over
@@ -724,10 +715,12 @@
 
     function showFeedback(icon, phrase) {
       feedbackFlash.innerHTML = '';
-      const iconEl = document.createElement('span');
-      iconEl.className = 'feedback-flash__icon';
-      iconEl.textContent = icon;
-      feedbackFlash.appendChild(iconEl);
+      if (icon) {
+        const iconEl = document.createElement('span');
+        iconEl.className = 'feedback-flash__icon';
+        iconEl.textContent = icon;
+        feedbackFlash.appendChild(iconEl);
+      }
       if (phrase) {
         const textEl = document.createElement('span');
         textEl.textContent = phrase;
@@ -772,7 +765,7 @@
 
       if (!option) {
         judgement = null; // unattended is not the same as "judged incorrectly"
-        showFeedback(Phrases.withhold.icon, '');
+        showFeedback(null, Phrases.withhold.label);
       } else {
         if (action === 'reinforce') iconType = randomIcon();
         showFeedback(option.icon, option.phrase);
@@ -963,16 +956,12 @@
         ? () => autoPairConditioning(trialResult)
         : () => { setPresentEnabled(true); armResolutionWindow(event); };
 
-      onsetFlash.textContent = '—';
-      onsetFlash.classList.remove('on');
       clearTimeout(clipTimer);
       clearTimeout(onsetTimer);
       setPresentEnabled(false);
       if (plan.playAtMs <= 0) {
         playClip(plan, onClipFinished);
-        onsetTimer = setTimeout(showOnsetMarker, -plan.playAtMs);
       } else {
-        showOnsetMarker();
         clipTimer = setTimeout(() => playClip(plan, onClipFinished), plan.playAtMs);
       }
 
@@ -1024,6 +1013,7 @@
       // than logging them (matches the old pendingTrial = null behavior).
       pendingEvents.forEach((event) => clearTimeout(event.expiryTimer));
       pendingEvents = [];
+      clearTimeout(spontaneousCheckTimer);
       hideInteractPalette();
       feedbackFlash.textContent = '';
       resetSessionLog();
@@ -1085,6 +1075,71 @@
     // ------------------------------------------------------------------
     // Video playback (idle loop <-> clip)
     // ------------------------------------------------------------------
+    // A spontaneous (unprompted) false positive must not look like it's
+    // riding the examiner's own Present button — so it's rolled on a timer
+    // tied to idle-loop footage, never inside presentTrial(). The first
+    // check only fires after one full idle-loop cycle has played (so a
+    // false positive can't appear the instant idling starts, which would
+    // read as tied to whatever the examiner just did), then re-checks once
+    // per idle-loop cycle for as long as the child keeps idling.
+    let spontaneousCheckTimer = null;
+
+    function idleLoopCheckIntervalMs() {
+      const loops = manifest.idleLoops;
+      return (loops && loops[0] && loops[0].durationMs) || 4000;
+    }
+
+    function scheduleSpontaneousCheck() {
+      clearTimeout(spontaneousCheckTimer);
+      spontaneousCheckTimer = setTimeout(() => {
+        maybeTriggerSpontaneousResponse();
+        // Still idling (no clip took over in the meantime)? Cycle to a
+        // fresh random idle-loop variant and keep checking.
+        if (video.loop && !video.paused) {
+          video.src = Scheduler.pickIdleLoopUrl(manifest);
+          video.play().catch(() => {});
+          scheduleSpontaneousCheck();
+        }
+      }, idleLoopCheckIntervalMs());
+    }
+
+    function maybeTriggerSpontaneousResponse() {
+      if (state.phase !== 'testing' || sessionFrozen) return;
+      if (!video.loop || video.paused) return; // a real clip is playing/queued
+      const trialResult = ChildModel.rollSpontaneousResponse(state, activeGame);
+      if (!trialResult) return;
+      presentSpontaneousEvent(trialResult);
+    }
+
+    // Mirrors presentTrial()'s testing-phase, false-positive path (queue a
+    // pending event, play the matching clip, arm its resolution window at
+    // clip end) but with no stimulus/onset behind it at all — the examiner
+    // never pressed Present for this one.
+    function presentSpontaneousEvent(trialResult) {
+      const event = {
+        id: nextEventId++,
+        trialResult,
+        freq: null,
+        ear: null,
+        mode: null,
+        masked: null,
+        presentedLevel: null,
+        clipEndedAt: null,
+        expiresAt: null,
+        expiryTimer: null,
+      };
+      pendingEvents.push(event);
+
+      const token = mapOutcomeToToken(trialResult.outcome);
+      const effectiveManifest = buildEffectiveManifest(manifest, currentCaseConfig);
+      const plan = Scheduler.computeSchedulingPlan(effectiveManifest, token, trialResult.timingOffsetMs);
+
+      clearTimeout(clipTimer);
+      clearTimeout(onsetTimer);
+      setPresentEnabled(false);
+      playClip(plan, () => { setPresentEnabled(true); armResolutionWindow(event); });
+    }
+
     function playIdleLoop() {
       // video.loop is only ever true while an idle-loop clip is playing, so
       // it doubles as "already idling" — a fixed idleLoopUrl comparison
@@ -1093,9 +1148,11 @@
       video.src = Scheduler.pickIdleLoopUrl(manifest);
       video.loop = true;
       video.play().catch(() => {});
+      scheduleSpontaneousCheck();
     }
 
     function playClip(plan, onFinished) {
+      clearTimeout(spontaneousCheckTimer);
       video.loop = false;
       video.src = plan.variantUrl;
       video.play().catch(() => {});
@@ -1115,12 +1172,6 @@
       };
       video.addEventListener('ended', revert);
       revertTimer = setTimeout(revert, plan.durationMs);
-    }
-
-    function showOnsetMarker() {
-      stimulusOnsetMs = performance.now();
-      onsetFlash.textContent = 'PRESENTED';
-      onsetFlash.classList.add('on');
     }
 
     // ------------------------------------------------------------------
@@ -1194,6 +1245,7 @@
     document.getElementById('end-session-btn').addEventListener('click', () => {
       flushPendingEvents();
       sessionFrozen = true;
+      clearTimeout(spontaneousCheckTimer);
       setPresentEnabled(false);
       openSummaryScreen({ frozen: true });
     });
@@ -1250,13 +1302,6 @@
       }
     });
 
-    function tickElapsed() {
-      if (stimulusOnsetMs !== null) {
-        elapsedReadout.textContent = `elapsed since onset: ${Math.round(performance.now() - stimulusOnsetMs)}ms`;
-      }
-      requestAnimationFrame(tickElapsed);
-    }
-
     // ------------------------------------------------------------------
     // Step 9: read-only review of a shared/exported results link. Skips
     // the entire live-session boot path (no manifest fetch, no
@@ -1310,7 +1355,6 @@
             onInteractEscape: hideInteractPalette,
           });
           playIdleLoop();
-          tickElapsed();
         })
         .catch((err) => {
           readout.textContent = 'Failed to load manifest.json: ' + err.message;

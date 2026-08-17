@@ -249,6 +249,35 @@ function resolveTrial(state, { freq, ear, cochleaLevel }, activeGame) {
 }
 
 /**
+ * Rolls for an unprompted false positive — a response with no stimulus
+ * presentation behind it at all, not just one the examiner hasn't judged
+ * yet. Meant to be called periodically during idle time (between trials),
+ * independent of any Present-button action, so a false positive isn't
+ * always suspiciously in lockstep with the examiner's own button press.
+ * Reuses computeProbabilities()'s pFalsePositive term directly — that term
+ * never reads `audible`, so it's identical to the odds resolveTrial() would
+ * draw from for the same state/game with no tone presented. pGenuine is
+ * irrelevant here (there's no stimulus to genuinely respond to) and is
+ * skipped entirely, not just zeroed after computing it.
+ * Returns a trialResult (outcome: 'false_positive') on a hit, or null.
+ */
+function rollSpontaneousResponse(state, activeGame) {
+  const s = deepClone(state);
+  const { pFalsePositive } = computeProbabilities(s, false, activeGame);
+  if (Math.random() >= pFalsePositive) return null;
+
+  return {
+    stimulus: null,
+    activeGame,
+    audible: false,
+    outcome: 'false_positive',
+    pGenuine: 0,
+    pFalsePositive,
+    timingOffsetMs: 0,
+  };
+}
+
+/**
  * Compat wrapper for callers that only have a single presented dB, not a
  * per-ear cochlea level (testHarness.js's headless batch harness, which has
  * no audiometer engine or masking/IAA physics). Treats the presented dB as
@@ -514,6 +543,7 @@ const ChildModel = {
   createChildState,
   runTrial,
   resolveTrial,
+  rollSpontaneousResponse,
   applyConditioningPhase,
   applyTestingAction,
   updateEngagementAndFatigue,

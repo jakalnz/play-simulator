@@ -32,8 +32,7 @@ const INTERACT_OPTIONS = [
   },
 ];
 
-const WITHHOLD_ICON = '😐';
-const WITHHOLD_LABEL = 'No reward, no guidance';
+const WITHHOLD_LABEL = 'Missed the feedback window';
 
 /**
  * Picks a random entry from `pool`, avoiding `lastValue` when the pool has
@@ -51,7 +50,6 @@ function pickNoRepeat(pool, lastValue) {
 const Phrases = {
   interactOptions: INTERACT_OPTIONS,
   withhold: {
-    icon: WITHHOLD_ICON,
     label: WITHHOLD_LABEL,
   },
   pickNoRepeat,
