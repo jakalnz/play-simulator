@@ -1158,20 +1158,15 @@
       video.play().catch(() => {});
 
       clearTimeout(revertTimer);
-      const revert = () => {
-        // durationMs is a fallback ceiling, not authoritative — when the
-        // real file's 'ended' event fires first (the common case), the
-        // fallback timer must be cancelled too, or it fires revert a
-        // second time later and double-calls onFinished (double-applies
-        // the trial in conditioning phase, double-arms/expires the
-        // resolution window in testing phase).
-        clearTimeout(revertTimer);
-        video.removeEventListener('ended', revert);
+      // plan.durationMs is the authoritative minimum display time — some
+      // source files run shorter than their declared durationMs, so an
+      // 'ended' listener would revert (and cut to the idle loop) before the
+      // full duration has shown. If the file ends early, it just holds on
+      // its last frame until the timer below fires.
+      revertTimer = setTimeout(() => {
         playIdleLoop();
         if (onFinished) onFinished();
-      };
-      video.addEventListener('ended', revert);
-      revertTimer = setTimeout(revert, plan.durationMs);
+      }, plan.durationMs);
     }
 
     // ------------------------------------------------------------------
