@@ -18,6 +18,7 @@
      padding on both sides instead of piling up on one. */
   .chart-video-row { display: flex; flex-wrap: nowrap; align-items: flex-start; justify-content: space-evenly; margin-bottom: 0.75rem; }
   .chart-video-row__video { flex: 0 1 360px; min-width: 260px; max-width: 360px; }
+  .chart-video-row__video video { width: 100%; height: 360px; object-fit: cover; display: block; border-radius: 8px; background: #000; }
   .chart-video-row__audiogram { flex: 0 1 450px; min-width: 0; }
   .audiogram-canvas-wrap { width: 100%; max-width: 450px; height: 360px; }
   .audiogram-canvas-wrap canvas { width: 100%; height: 100%; display: block; background: var(--color-panel, #fff); border: 1px solid var(--color-border, #d8dadf); border-radius: 8px; }
@@ -43,13 +44,11 @@
   .keyboard-shortcuts-hint li { margin-bottom: 0.2rem; }
   .keyboard-shortcuts-hint kbd { font-family: monospace; background: #eee; border: 1px solid #ccc; border-radius: 3px; padding: 0 0.3rem; }
   .interact-row { margin: 1rem 0; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; position: relative; }
-  .interact-btn { font-size: 1rem; padding: 0.6rem 1.2rem; border-radius: 6px; border: 2px solid #1f5fd2; background: #eaf0fb; cursor: pointer; font-weight: 600; }
-  .interact-palette { position: absolute; top: 100%; left: 0; z-index: 5; margin-top: 0.4rem; padding: 0.75rem; border: 1px solid #d8dadf; border-radius: 8px; background: #fff; box-shadow: 0 4px 14px rgba(0,0,0,0.12); display: flex; flex-direction: column; gap: 0.5rem; min-width: 260px; }
-  .interact-palette[hidden] { display: none; }
+  .interact-palette { display: flex; flex-direction: column; gap: 0.5rem; max-width: 420px; }
   .interact-option-btn { font-size: 0.95rem; padding: 0.5rem 0.9rem; border-radius: 6px; border: 2px solid #d8dadf; background: #fff; cursor: pointer; text-align: left; display: flex; align-items: center; gap: 0.5rem; }
   .interact-option-btn.reinforce { border-color: #1f8a2f; background: #eaf7ec; }
   .interact-option-btn.reinstruct { border-color: #1f5fd2; background: #eaf0fb; }
-  .interact-cancel-btn { font-size: 0.85rem; padding: 0.4rem 0.9rem; border-radius: 6px; border: 1px solid #d8dadf; background: #f4f4f4; cursor: pointer; align-self: flex-end; }
+  .interact-option-btn__num { display: inline-flex; align-items: center; justify-content: center; width: 1.4rem; height: 1.4rem; border-radius: 50%; background: rgba(0,0,0,0.08); font-weight: 700; font-size: 0.8rem; flex: none; }
   .feedback-flash { display: flex; align-items: center; gap: 0.6rem; font-size: 1.1rem; padding: 0.4rem 0; }
   .feedback-flash__icon { font-size: 1.8rem; }
   .session-log { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
@@ -161,8 +160,7 @@
             <li><kbd>M</kbd> toggle masking</li>
             <li><kbd>S</kbd> store</li>
             <li><kbd>Delete</kbd> delete point</li>
-            <li><kbd>I</kbd> interact (open/close palette)</li>
-            <li><kbd>Esc</kbd> close interact palette</li>
+            <li><kbd>1</kbd>-<kbd>4</kbd> interact option</li>
           </ul>
         </details>
 
@@ -206,8 +204,7 @@
         </div>
 
         <div class="interact-row">
-          <button id="interact-btn" class="interact-btn" aria-haspopup="true" aria-expanded="false">Interact (I)</button>
-          <div class="interact-palette" id="interact-palette" hidden></div>
+          <div class="interact-palette" id="interact-palette"></div>
         </div>
         <div class="feedback-flash" id="feedback-flash"></div>
 
@@ -575,7 +572,6 @@
     // ------------------------------------------------------------------
     // Free-form Interact UI state
     // ------------------------------------------------------------------
-    const interactBtn = document.getElementById('interact-btn');
     const interactPalette = document.getElementById('interact-palette');
     const feedbackFlash = document.getElementById('feedback-flash');
     const sessionLogBody = document.getElementById('session-log-body');
@@ -659,59 +655,29 @@
     }
 
     // ------------------------------------------------------------------
-    // Interact palette (open/close only — resolution logic is in
-    // resolveInteraction()/expireEvent()/flushPendingEvents() below)
+    // Interact options — always visible, numbered 1-4. Resolution logic is
+    // in resolveInteraction()/expireEvent()/flushPendingEvents() below.
     // ------------------------------------------------------------------
     function renderInteractPalette() {
       interactPalette.innerHTML = '';
-      Phrases.interactOptions.forEach((opt) => {
+      Phrases.interactOptions.forEach((opt, i) => {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = `interact-option-btn ${opt.action}`;
         btn.dataset.optionId = opt.id;
-        btn.innerHTML = `<span>${opt.icon}</span><span>${opt.phrase}</span>`;
-        btn.addEventListener('click', () => {
-          resolveInteraction(opt.id);
-          hideInteractPalette();
-        });
+        btn.innerHTML = `<span class="interact-option-btn__num">${i + 1}</span><span>${opt.icon}</span><span>${opt.phrase}</span>`;
+        btn.addEventListener('click', () => resolveInteraction(opt.id));
         interactPalette.appendChild(btn);
       });
-      const cancelBtn = document.createElement('button');
-      cancelBtn.type = 'button';
-      cancelBtn.className = 'interact-cancel-btn';
-      cancelBtn.textContent = 'Cancel';
-      cancelBtn.addEventListener('click', hideInteractPalette);
-      interactPalette.appendChild(cancelBtn);
     }
 
-    function isPaletteOpen() {
-      return !interactPalette.hidden;
+    // Invoked by the 1-4 number keys — see keyboard-shortcuts.js's
+    // onInteractOption. Index is 0-based, matching Phrases.interactOptions
+    // order (same order the numbered buttons above render in).
+    function resolveInteractionByIndex(index) {
+      const opt = Phrases.interactOptions[index];
+      if (opt) resolveInteraction(opt.id);
     }
-
-    function showInteractPalette() {
-      interactPalette.hidden = false;
-      interactBtn.setAttribute('aria-expanded', 'true');
-    }
-
-    function hideInteractPalette() {
-      interactPalette.hidden = true;
-      interactBtn.setAttribute('aria-expanded', 'false');
-    }
-
-    function toggleInteractPalette() {
-      if (isPaletteOpen()) {
-        hideInteractPalette();
-      } else {
-        showInteractPalette();
-      }
-    }
-
-    interactBtn.addEventListener('click', toggleInteractPalette);
-    document.addEventListener('click', (e) => {
-      if (isPaletteOpen() && !interactPalette.contains(e.target) && e.target !== interactBtn) {
-        hideInteractPalette();
-      }
-    });
 
     function showFeedback(icon, phrase) {
       feedbackFlash.innerHTML = '';
@@ -1014,7 +980,6 @@
       pendingEvents.forEach((event) => clearTimeout(event.expiryTimer));
       pendingEvents = [];
       clearTimeout(spontaneousCheckTimer);
-      hideInteractPalette();
       feedbackFlash.textContent = '';
       resetSessionLog();
       sessionFrozen = false;
@@ -1346,8 +1311,7 @@
             patientModel,
             dom,
             resolveResponse,
-            onInteract: toggleInteractPalette,
-            onInteractEscape: hideInteractPalette,
+            onInteractOption: resolveInteractionByIndex,
           });
           playIdleLoop();
         })

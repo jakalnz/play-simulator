@@ -3,9 +3,11 @@
 // Copied from jakalnz/pta-simulator js/keyboard-shortcuts.js, de-modularized.
 // Space = press-and-hold Present (mirrors the Present button's own
 // pointerdown/pointerup pattern), arrows = level/frequency, Shift+arrows =
-// masking level, M = toggle masking, S = Store, Delete = delete stored point.
+// masking level, M = toggle masking, S = Store, Delete = delete stored
+// point, 1-4 = fire the numbered Interact option directly (no open/close
+// step — the options are always on screen).
 (function () {
-  function wireKeyboardShortcuts({ engine, onStore, onDelete, onLevelChange, onPresentStart, onPresentEnd, onInteract, onInteractEscape }) {
+  function wireKeyboardShortcuts({ engine, onStore, onDelete, onLevelChange, onPresentStart, onPresentEnd, onInteractOption }) {
     function isTextInput(el) {
       return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
     }
@@ -58,13 +60,12 @@
           e.preventDefault();
           onDelete?.();
           break;
-        case 'i':
-        case 'I':
+        case '1':
+        case '2':
+        case '3':
+        case '4':
           e.preventDefault();
-          onInteract?.();
-          break;
-        case 'Escape':
-          onInteractEscape?.();
+          onInteractOption?.(Number(e.key) - 1);
           break;
         case ' ':
         case 'Spacebar':
