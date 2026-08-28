@@ -12,6 +12,9 @@
   .page { max-width: none; margin: 0; padding: 0; }
   .content-pad { padding: 0 12px; }
   video { width: 100%; background: #000; display: block; }
+  .video-stack { position: relative; }
+  .video-stack video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; }
+  .video-stack video.is-visible { position: relative; opacity: 1; }
   /* Video and audiogram are a fixed-size pair, centered as a group so the
      leftover width (now that the audiogram is capped at 1.25x its own
      height rather than stretching to fill the panel) reads as even
@@ -169,8 +172,9 @@
 
       <div class="chart-panel panel">
         <div class="chart-video-row">
-          <div class="chart-video-row__video">
-            <video id="video" autoplay muted playsinline></video>
+          <div class="chart-video-row__video video-stack">
+            <video id="video-a" class="is-visible" autoplay muted playsinline></video>
+            <video id="video-b" muted playsinline></video>
           </div>
           <div class="chart-video-row__audiogram">
             <div class="audiogram-canvas-wrap">
@@ -522,7 +526,41 @@
     let revertTimer = null;
     let onsetTimer = null;
 
-    const video = document.getElementById('video');
+    // Two stacked <video> elements so transitions never show a black
+    // reload frame: the next source loads on the hidden standby element
+    // and only becomes visible once it can actually play, then the two
+    // swap roles. `activeVideo` is always the one the child model reads
+    // playback state (.loop/.paused) off of.
+    const videoA = document.getElementById('video-a');
+    const videoB = document.getElementById('video-b');
+    let activeVideo = videoA;
+    let standbyVideo = videoB;
+
+    function loadAndSwap(url, { loop = false } = {}, onReady) {
+      const el = standbyVideo;
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        el.removeEventListener('canplay', finish);
+        el.loop = loop;
+        el.play().catch(() => {});
+        activeVideo.pause();
+        activeVideo.classList.remove('is-visible');
+        el.classList.add('is-visible');
+        const prev = activeVideo;
+        activeVideo = el;
+        standbyVideo = prev;
+        if (onReady) onReady();
+      };
+      el.addEventListener('canplay', finish);
+      el.src = url;
+      el.load();
+      // Safety net: don't block the swap forever if canplay never fires
+      // (e.g. a slow/broken source) — 400ms is well under a clip's
+      // duration, so worst case this degrades to today's reload behavior.
+      setTimeout(finish, 400);
+    }
     const caseSelect = document.getElementById('caseSelect');
     const strategySelect = document.getElementById('strategySelect');
     const readout = document.getElementById('readout');
@@ -1059,10 +1097,11 @@
       spontaneousCheckTimer = setTimeout(() => {
         maybeTriggerSpontaneousResponse();
         // Still idling (no clip took over in the meantime)? Cycle to a
-        // fresh random idle-loop variant and keep checking.
-        if (video.loop && !video.paused) {
-          video.src = Scheduler.pickIdleLoopUrl(manifest);
-          video.play().catch(() => {});
+        // fresh random idle-loop variant and keep checking. Loaded on the
+        // standby element and swapped in once ready, so this never shows
+        // a reload/black frame.
+        if (activeVideo.loop && !activeVideo.paused) {
+          loadAndSwap(Scheduler.pickIdleLoopUrl(manifest), { loop: true });
           scheduleSpontaneousCheck();
         }
       }, idleLoopCheckIntervalMs());
@@ -1070,7 +1109,7 @@
 
     function maybeTriggerSpontaneousResponse() {
       if (state.phase !== 'testing' || sessionFrozen) return;
-      if (!video.loop || video.paused) return; // a real clip is playing/queued
+      if (!activeVideo.loop || activeVideo.paused) return; // a real clip is playing/queued
       const trialResult = ChildModel.rollSpontaneousResponse(state, activeGame);
       if (!trialResult) return;
       presentSpontaneousEvent(trialResult);
@@ -1106,21 +1145,19 @@
     }
 
     function playIdleLoop() {
-      // video.loop is only ever true while an idle-loop clip is playing, so
-      // it doubles as "already idling" — a fixed idleLoopUrl comparison
-      // wouldn't work once idle footage is picked randomly per return-to-idle.
-      if (video.loop && !video.paused) return;
-      video.src = Scheduler.pickIdleLoopUrl(manifest);
-      video.loop = true;
-      video.play().catch(() => {});
+      // activeVideo.loop is only ever true while an idle-loop clip is
+      // playing, so it doubles as "already idling" — a fixed idleLoopUrl
+      // comparison wouldn't work once idle footage is picked randomly per
+      // return-to-idle.
+      if (activeVideo.loop && !activeVideo.paused) return;
+      clearTimeout(revertTimer);
+      loadAndSwap(Scheduler.pickIdleLoopUrl(manifest), { loop: true });
       scheduleSpontaneousCheck();
     }
 
     function playClip(plan, onFinished) {
       clearTimeout(spontaneousCheckTimer);
-      video.loop = false;
-      video.src = plan.variantUrl;
-      video.play().catch(() => {});
+      loadAndSwap(plan.variantUrl, { loop: false });
 
       clearTimeout(revertTimer);
       // plan.durationMs is the authoritative minimum display time — some
