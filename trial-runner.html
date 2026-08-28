@@ -536,13 +536,25 @@
     let activeVideo = videoA;
     let standbyVideo = videoB;
 
+    // Two loadAndSwap() calls can overlap (e.g. a spontaneous response's
+    // playClip() firing, then the idle-cycle branch right after it in the
+    // same tick, still reading the pre-swap activeVideo). Without a guard,
+    // a stale call's finish() can run after a newer one already flipped
+    // activeVideo/standbyVideo, pausing the element it just started and
+    // leaving both pointers on the same node — killing the double-buffer
+    // and eventually freezing playback. swapGeneration lets a superseded
+    // call recognize it's stale and bail instead of corrupting state.
+    let swapGeneration = 0;
+
     function loadAndSwap(url, { loop = false } = {}, onReady) {
       const el = standbyVideo;
+      const myGeneration = ++swapGeneration;
       let settled = false;
       const finish = () => {
         if (settled) return;
         settled = true;
         el.removeEventListener('canplay', finish);
+        if (myGeneration !== swapGeneration || el !== standbyVideo) return;
         el.loop = loop;
         el.play().catch(() => {});
         activeVideo.pause();
@@ -1095,12 +1107,17 @@
     function scheduleSpontaneousCheck() {
       clearTimeout(spontaneousCheckTimer);
       spontaneousCheckTimer = setTimeout(() => {
-        maybeTriggerSpontaneousResponse();
+        const triggered = maybeTriggerSpontaneousResponse();
         // Still idling (no clip took over in the meantime)? Cycle to a
         // fresh random idle-loop variant and keep checking. Loaded on the
         // standby element and swapped in once ready, so this never shows
-        // a reload/black frame.
-        if (activeVideo.loop && !activeVideo.paused) {
+        // a reload/black frame. If a spontaneous response just fired,
+        // playClip() already owns the standby element and its own
+        // revertTimer will re-arm this check when it returns to idle —
+        // starting a second loadAndSwap() here would race it for the same
+        // standby element (activeVideo.loop is still stale/true at this
+        // point since that swap hasn't resolved yet).
+        if (!triggered && activeVideo.loop && !activeVideo.paused) {
           loadAndSwap(Scheduler.pickIdleLoopUrl(manifest), { loop: true });
           scheduleSpontaneousCheck();
         }
@@ -1108,11 +1125,12 @@
     }
 
     function maybeTriggerSpontaneousResponse() {
-      if (state.phase !== 'testing' || sessionFrozen) return;
-      if (!activeVideo.loop || activeVideo.paused) return; // a real clip is playing/queued
+      if (state.phase !== 'testing' || sessionFrozen) return false;
+      if (!activeVideo.loop || activeVideo.paused) return false; // a real clip is playing/queued
       const trialResult = ChildModel.rollSpontaneousResponse(state, activeGame);
-      if (!trialResult) return;
+      if (!trialResult) return false;
       presentSpontaneousEvent(trialResult);
+      return true;
     }
 
     // Mirrors presentTrial()'s testing-phase, false-positive path (queue a
