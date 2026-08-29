@@ -11,9 +11,7 @@
   body { font-family: system-ui, sans-serif; margin: 0; }
   .page { max-width: none; margin: 0; padding: 0; }
   .content-pad { padding: 0 12px; }
-  #main-top-controls { padding: 0; margin: 0; min-height: 0; }
-  #main-top-controls label { font-size: 0.85rem; }
-  #main-top-controls:not(:has(#case-select-label:not([hidden]))) { display: none; }
+  .case-select-label { font-size: 0.85rem; }
   video { width: 100%; background: #000; display: block; }
   .video-stack { position: relative; }
   .video-stack video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; }
@@ -137,14 +135,6 @@
 </head>
 <body>
 <div class="page">
-  <div class="content-pad">
-    <div class="top-controls" id="main-top-controls">
-      <label id="case-select-label">Case:
-        <select id="caseSelect"></select>
-      </label>
-    </div>
-  </div>
-
   <div class="audiometer-wrap">
     <div class="app">
       <div class="display-bar">
@@ -348,7 +338,10 @@
         <div class="hints-status" id="hints-status-flag" style="grid-row: r8;">Hints: ON</div>
       </div>
 
-      <div class="app-footer panel">
+      <div class="app-footer panel" id="main-top-controls">
+        <label id="case-select-label" class="case-select-label">Case:
+          <select id="caseSelect"></select>
+        </label>
         <button id="direction-switch" class="switch-btn" type="button" aria-pressed="true">Up = Louder</button>
         <button id="sound-switch" class="switch-btn" type="button" aria-pressed="true">Tone: On</button>
         <button id="hints-switch" class="switch-btn" type="button" aria-pressed="true">Hints: On</button>

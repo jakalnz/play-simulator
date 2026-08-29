@@ -20,12 +20,16 @@
     padding: 1rem 1.25rem; margin: 1rem 0; }
   section.form-block h2 { margin-top: 0; font-size: 1.05rem; }
   .field-row { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.6rem; }
-  .field { display: flex; flex-direction: column; gap: 0.2rem; min-width: 160px; }
+  .field { display: flex; flex-direction: column; gap: 0.2rem; min-width: 200px; }
   .field label { font-size: 0.8rem; color: #555; }
   .field input, .field textarea, .field select { padding: 0.35rem; font-size: 0.95rem; }
   .field--wide { flex: 1 1 100%; }
+  .field-hint { font-size: 0.72rem; color: #777; line-height: 1.3; margin: 0; }
+  .field-hint b { color: #444; }
+  .section-intro { font-size: 0.82rem; color: #555; margin: -0.25rem 0 0.9rem; line-height: 1.4; }
   .game-subsection { border: 1px solid #eee; border-radius: 6px; padding: 0.75rem; margin-bottom: 0.6rem; }
   .game-subsection h3 { margin: 0 0 0.5rem; font-size: 0.9rem; text-transform: capitalize; }
+  .game-subsection__intro { font-size: 0.78rem; color: #666; margin: 0 0 0.6rem; }
   #threshold-table { border-collapse: collapse; margin-bottom: 0.75rem; }
   #threshold-table th, #threshold-table td { border: 1px solid #d8dadf; padding: 0.3rem 0.5rem; text-align: center; }
   #threshold-table td.row-label { text-align: left; font-weight: 600; }
@@ -103,28 +107,68 @@
 
     <section class="form-block">
       <h2>Session parameters</h2>
+      <p class="section-intro">
+        These set the child's starting condition for the session — how much stamina they
+        bring to the booth, and two multipliers that scale how fast the built-in behavior
+        model reacts. Everything else (conditioning, engagement, false-positive rate) is
+        derived live during the session and isn't set here.
+      </p>
       <div class="field-row">
         <div class="field">
           <label for="field-response-budget">Response budget</label>
           <input id="field-response-budget" type="number" min="0" step="5" />
+          <p class="field-hint">
+            How many responses (correct or not) the child has "in the tank" before fatigue/
+            disengagement dominates. Roughly maps to session length — higher = a longer
+            testable session. <b>Suggested: 80–100</b> for a child who tires quickly,
+            <b>120</b> (default) for typical, <b>150–180</b> for a very cooperative child.
+          </p>
         </div>
         <div class="field">
           <label for="field-starting-fatigue">Starting fatigue</label>
           <input id="field-starting-fatigue" type="number" min="0" max="100" step="1" />
+          <p class="field-hint">
+            0–100. The child's fatigue level at the very start of the session — use above 0
+            to simulate a child who's already tired/fussy before testing begins (e.g. tested
+            late in the day, or after a long wait). Fatigue rises further over the session
+            and gradually suppresses genuine responses and conditioning gains.
+            <b>Suggested: 0</b> (fresh start, default) or <b>15–30</b> for "already tired."
+          </p>
         </div>
         <div class="field">
           <label for="field-engagement-decay">Engagement decay rate (×, 1.0 = normal)</label>
           <input id="field-engagement-decay" type="number" min="0.1" max="3" step="0.1" />
+          <p class="field-hint">
+            Multiplies how fast engagement drops each trial (faster drop = gets bored/
+            distracted sooner, especially between reinforcements). 1.0 = default rate.
+            <b>Suggested: 0.6–0.8</b> for a patient/easy-to-engage child,
+            <b>1.0</b> typical, <b>1.5–2.0</b> for a child who disengages quickly and
+            needs frequent, well-timed reinforcement to stay testable.
+          </p>
         </div>
         <div class="field">
           <label for="field-fp-susceptibility">False-positive susceptibility (×, 1.0 = normal)</label>
           <input id="field-fp-susceptibility" type="number" min="0.1" max="3" step="0.1" />
+          <p class="field-hint">
+            Multiplies the child's baseline chance of a false-positive (unprompted/guessed
+            "response" with nothing audible presented) — this is the main knob for how much
+            a case exercises the student's judgement on withhold vs. reinstruct.
+            <b>Suggested: 0.5–0.8</b> for a straightforward case, <b>1.0</b> typical,
+            <b>1.5–2.5</b> for a "tricky" case designed to test false-positive handling.
+          </p>
         </div>
       </div>
     </section>
 
     <section class="form-block" id="games-section">
       <h2>Games</h2>
+      <p class="section-intro">
+        Each of the three play-audiometry games (cars/horses/marbles) is conditioned
+        independently — a child can be well-conditioned to one and a blank slate on
+        another, which is why switching games mid-session (in the Trial runner) restores
+        some engagement. Set these per game to shape which one the child already "knows"
+        and how readily each one builds conditioning.
+      </p>
     </section>
 
     <section class="form-block">
@@ -180,6 +224,17 @@
   const gatePassword = document.getElementById('gate-password');
   const gateError = document.getElementById('gate-error');
 
+  // Declared here (before the sessionStorage auto-login check below can
+  // call enterAdmin() -> initAdmin()) rather than down in "Admin form" —
+  // initAdmin() reads adminInitialized, and a let binding is in the
+  // temporal dead zone until its own declaration runs, so the auto-login
+  // path (password already cached from earlier this session) would
+  // otherwise throw before reaching the later declaration.
+  let adminInitialized = false;
+  let caseDraft = null;
+  let thresholdEditor = null;
+  let manifest = null;
+
   function enterAdmin() {
     gate.classList.add('hidden');
     adminMain.classList.remove('hidden');
@@ -204,11 +259,6 @@
   // ------------------------------------------------------------------
   // Admin form
   // ------------------------------------------------------------------
-  let adminInitialized = false;
-  let caseDraft = null;
-  let thresholdEditor = null;
-  let manifest = null;
-
   function refreshAudiogram() {
     const canvas = document.getElementById('admin-audiogram-canvas');
     if (!canvas || !window.AudiogramChart) return;
@@ -267,14 +317,35 @@
           <div class="field">
             <label for="game-${g}-base">Base response level</label>
             <input id="game-${g}-base" type="number" min="0" max="120" step="1" />
+            <p class="field-hint">
+              Author-facing reference value only — it isn't currently read by the
+              conditioning/response simulation, so it has no effect on session behavior yet.
+              Use it as a note-to-self about the game's intended baseline (e.g. relative
+              volume/salience of the reward) until it's wired up.
+            </p>
           </div>
           <div class="field">
             <label for="game-${g}-gain">Conditioning gain rate</label>
             <input id="game-${g}-gain" type="number" min="0" max="2" step="0.05" />
+            <p class="field-hint">
+              Multiplies how much conditioning builds per reinforced trial for this game —
+              this is the main "how easy is this game to condition to" knob.
+              <b>Suggested: 1.0–1.2</b> for the child's favorite/easiest game,
+              <b>0.6–0.8</b> for a middling game, <b>0.3–0.5</b> for a game they find
+              unrewarding/hard to condition to.
+            </p>
           </div>
           <div class="field">
             <label for="game-${g}-start">Starting conditioning</label>
             <input id="game-${g}-start" type="number" min="0" max="100" step="1" />
+            <p class="field-hint">
+              0–100. How conditioned the child already is to this game before the session
+              starts — 0 means fully unconditioned (needs a conditioning phase before
+              testing will produce reliable genuine responses).
+              <b>Suggested: 0</b> for a game introduced fresh this session,
+              <b>10–20</b> for "a little prior exposure," <b>40+</b> only for a game the
+              child is already well-trained on (lets you skip/shorten conditioning).
+            </p>
           </div>
         </div>
       `;
