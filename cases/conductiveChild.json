@@ -1,9 +1,13 @@
 {
-  "name": "Ari",
-  "vignette": "4yo, mild bilateral loss, conditions quickly and stays engaged.",
+  "name": "Hemi",
+  "vignette": "4yo, right ear normal, mild flat conductive loss (40dB air-bone gap) in the left ear from recurrent middle-ear fluid. Conditions quickly and stays engaged.",
   "trueThreshold": {
-    "right": { "500": 15, "1000": 15, "2000": 20, "4000": 20 },
-    "left": { "500": 15, "1000": 15, "2000": 20, "4000": 20 }
+    "right": { "500": 10, "1000": 10, "2000": 10, "4000": 10 },
+    "left": { "500": 10, "1000": 10, "2000": 10, "4000": 10 }
+  },
+  "conductiveLoss": {
+    "right": { "500": 0, "1000": 0, "2000": 0, "4000": 0 },
+    "left": { "500": 40, "1000": 40, "2000": 40, "4000": 40 }
   },
   "startingFatigue": 0,
   "startingPhase": "conditioning",
