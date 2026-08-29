@@ -12,7 +12,7 @@ function spawnEmoji(container, emoji, className, delayMs) {
   const el = document.createElement('span');
   el.className = `reward-overlay__emoji ${className}`;
   el.textContent = emoji;
-  el.style.left = `${10 + Math.random() * 70}%`;
+  el.style.top = `${8 + Math.random() * 74}%`;
   el.style.animationDelay = `${delayMs}ms`;
   el.addEventListener('animationend', () => el.remove());
   container.appendChild(el);
@@ -27,7 +27,7 @@ function play(container, action) {
 
   for (let i = 0; i < count; i++) {
     const emoji = pool[Math.floor(Math.random() * pool.length)];
-    spawnEmoji(container, emoji, action, i * 120);
+    spawnEmoji(container, emoji, action, i * 180);
   }
 }
 

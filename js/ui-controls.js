@@ -167,7 +167,7 @@
       const physics = engine.presentTone();
       const { testResponded, contraResponded } = resolveResponse(physics, s);
       const { heard } = engine.recordResponse({ testResponded, contraResponded });
-      if (heard) {
+      if (heard && hintsOn) {
         flashResponseLight();
       } else {
         clearResponseLight();
@@ -266,6 +266,7 @@
       hintsOn = on;
       dom.hintsSwitch.textContent = hintsOn ? 'Hints: On' : 'Hints: Off';
       dom.hintsSwitch.setAttribute('aria-pressed', String(hintsOn));
+      if (!hintsOn) clearResponseLight();
       refreshHintsStatus();
       refreshDisplayBar();
     }
