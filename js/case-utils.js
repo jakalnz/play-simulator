@@ -43,9 +43,9 @@
   // drift from what resolveTrial() actually looks up.
   function blankCaseConfig() {
     const freqs = window.PtaUtils.FREQUENCIES;
-    const thresholdRow = () => {
+    const thresholdRow = (value = 30) => {
       const row = {};
-      freqs.forEach((f) => { row[f] = 30; });
+      freqs.forEach((f) => { row[f] = value; });
       return row;
     };
 
@@ -53,6 +53,7 @@
       name: '',
       vignette: '',
       trueThreshold: { right: thresholdRow(), left: thresholdRow() },
+      conductiveLoss: { right: thresholdRow(0), left: thresholdRow(0) },
       startingFatigue: 0,
       startingPhase: 'conditioning',
       responseBudget: 120,
@@ -86,6 +87,16 @@
       const t = (caseConfig.trueThreshold && caseConfig.trueThreshold[ear]) || {};
       freqs.forEach((f) => {
         if (t[f] == null) missing.push(`${ear} ${f}Hz`);
+      });
+    });
+    // conductiveLoss is optional on older cases (treated as 0 dB everywhere
+    // it's read), so only flag it as missing when the key exists but is
+    // incomplete — an absent key entirely is valid, not an authoring error.
+    ['right', 'left'].forEach((ear) => {
+      const c = caseConfig.conductiveLoss && caseConfig.conductiveLoss[ear];
+      if (!c) return;
+      freqs.forEach((f) => {
+        if (c[f] == null) missing.push(`${ear} ${f}Hz conductive component`);
       });
     });
     return missing;

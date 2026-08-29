@@ -13,8 +13,10 @@
 (function () {
   const { FREQUENCIES, clampLevel } = window.PtaUtils;
   const ROWS = [
-    { ear: 'right', label: 'Right ear' },
-    { ear: 'left', label: 'Left ear' },
+    { ear: 'right', label: 'Right ear (cochlear / BC)', field: 'trueThreshold' },
+    { ear: 'right', label: 'Right ear conductive component (air-bone gap)', field: 'conductiveLoss' },
+    { ear: 'left', label: 'Left ear (cochlear / BC)', field: 'trueThreshold' },
+    { ear: 'left', label: 'Left ear conductive component (air-bone gap)', field: 'conductiveLoss' },
   ];
 
   function buildThresholdEditor({ caseDraft, tbody, thead, onChange }) {
@@ -48,10 +50,10 @@
           input.step = 5;
           input.min = -10;
           input.max = 120;
-          input.value = caseDraft.trueThreshold[row.ear][freq];
+          input.value = caseDraft[row.field][row.ear][freq];
           input.addEventListener('change', () => {
             const clamped = clampLevel(Number(input.value));
-            caseDraft.trueThreshold[row.ear][freq] = clamped;
+            caseDraft[row.field][row.ear][freq] = clamped;
             input.value = clamped;
             onChange?.();
           });

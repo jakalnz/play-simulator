@@ -113,6 +113,7 @@ function createChildState(caseConfig) {
 
   return {
     trueThreshold: deepClone(caseConfig.trueThreshold),
+    conductiveLoss: deepClone(caseConfig.conductiveLoss || { right: {}, left: {} }),
     engagementLevel: 100,
     fatigueLevel: caseConfig.startingFatigue != null ? caseConfig.startingFatigue : 0,
     responseBudget: caseConfig.responseBudget != null ? caseConfig.responseBudget : CONFIG.responseBudgetStart,

@@ -265,10 +265,18 @@
     const points = [];
     ['right', 'left'].forEach((ear) => {
       const row = caseDraft.trueThreshold[ear];
+      const conductiveRow = (caseDraft.conductiveLoss && caseDraft.conductiveLoss[ear]) || {};
       window.PtaUtils.FREQUENCIES.forEach((freq) => {
         const level = row[freq];
         if (level == null) return;
-        points.push({ ear, freq, level, mode: 'AC', masked: false, noResponse: false });
+        const gap = conductiveRow[freq] || 0;
+        points.push({ ear, freq, level: level + gap, mode: 'AC', masked: false, noResponse: false });
+        // Only plot a separate BC symbol when there's an actual air-bone
+        // gap to show — matches a real audiogram, which omits BC marks
+        // when AC and BC coincide.
+        if (gap > 0) {
+          points.push({ ear, freq, level, mode: 'BC', masked: false, noResponse: false });
+        }
       });
     });
     window.AudiogramChart.renderAudiogram(canvas, points);
@@ -473,6 +481,12 @@
       caseDraft = filename
         ? await fetch(`cases/${filename}`).then((r) => r.json())
         : window.CaseUtils.blankCaseConfig();
+      // Older case files predate conductiveLoss — default to 0 dB (no gap)
+      // rather than leaving the field absent, so the threshold editor and
+      // audiogram preview have a value to read/bind.
+      if (!caseDraft.conductiveLoss) {
+        caseDraft.conductiveLoss = window.CaseUtils.blankCaseConfig().conductiveLoss;
+      }
       rebuildThresholdEditor();
       draftToFields();
     });

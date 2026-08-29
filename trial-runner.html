@@ -529,14 +529,14 @@
     // ------------------------------------------------------------------
     // The engine only needs physics inputs, not a full threshold/hysteresis
     // model (childModel.js owns the response decision) — see
-    // js/audiometer-engine.js's file header. ipsiConductive defaults to 0
-    // (this repo's case data doesn't yet split conductive/cochlear
-    // components of a loss); cross-IAA defaults mirror the source
+    // js/audiometer-engine.js's file header. ipsiConductive reads the
+    // case's conductiveLoss (air-bone gap), defaulting to 0 for older case
+    // data that predates the field; cross-IAA defaults mirror the source
     // simulator's headphone/insert rows. getThreshold reads directly from
-    // childModel's per-ear trueThreshold and is used only for the
-    // masking-required hint and overmasking check — never to decide if the
-    // presented tone itself is heard. AC and BC share the same threshold
-    // value since case data doesn't model a separate BC threshold yet.
+    // childModel's per-ear trueThreshold (the cochlear/BC value) for BC
+    // mode, and trueThreshold + conductiveLoss for AC mode; it's used only
+    // for the masking-required hint and overmasking check — never to
+    // decide if the presented tone itself is heard.
     function createPatientModelAdapter(getState) {
       function headphoneCross(freq) {
         return 40;
@@ -544,9 +544,13 @@
       function insertphoneCross(freq) {
         return freq <= 1000 ? 60 : 50;
       }
+      function conductiveGap(ear, freq) {
+        const gap = getState().conductiveLoss?.[ear]?.[freq];
+        return gap == null ? 0 : gap;
+      }
       return {
         getParam(ear, param, freq) {
-          if (param === 'ipsiConductive') return 0;
+          if (param === 'ipsiConductive') return conductiveGap(ear, freq);
           return 0;
         },
         getCrossIAA(transducer, freq) {
@@ -554,7 +558,8 @@
         },
         getThreshold(ear, mode, freq) {
           const t = getState().trueThreshold[ear][freq];
-          return t == null ? 0 : t;
+          const cochlear = t == null ? 0 : t;
+          return mode === 'BC' ? cochlear : cochlear + conductiveGap(ear, freq);
         },
       };
     }

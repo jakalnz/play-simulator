@@ -11,9 +11,11 @@
 (function () {
   const SCHEMA_VERSION = 1;
 
-  // Only trueThreshold is treated as answer-key data worth obfuscating when
-  // locked — matching pta-simulator's own precedent (only the
-  // threshold/patient data is ever wrapped, never budget/rate constants).
+  // trueThreshold and conductiveLoss are treated as answer-key data worth
+  // obfuscating when locked — matching pta-simulator's own precedent (only
+  // the threshold/patient data is ever wrapped, never budget/rate
+  // constants). conductiveLoss is the air-bone gap component of the same
+  // answer key, so it's wrapped the same way.
   function serializeCase(caseConfig, { locked } = {}) {
     const isLocked = !!locked;
     return {
@@ -25,6 +27,9 @@
       trueThreshold: isLocked
         ? { __obfuscated: true, data: window.Obfuscate.obfuscate(caseConfig.trueThreshold) }
         : caseConfig.trueThreshold,
+      conductiveLoss: isLocked
+        ? { __obfuscated: true, data: window.Obfuscate.obfuscate(caseConfig.conductiveLoss) }
+        : caseConfig.conductiveLoss,
       startingFatigue: caseConfig.startingFatigue,
       startingPhase: caseConfig.startingPhase,
       responseBudget: caseConfig.responseBudget,
@@ -62,10 +67,16 @@
         ? window.Obfuscate.deobfuscate(data.trueThreshold.data)
         : data.trueThreshold;
 
+    const conductiveLoss =
+      data.conductiveLoss && data.conductiveLoss.__obfuscated
+        ? window.Obfuscate.deobfuscate(data.conductiveLoss.data)
+        : data.conductiveLoss;
+
     const caseConfig = {
       name: data.name,
       vignette: data.vignette,
       trueThreshold,
+      conductiveLoss,
       startingFatigue: data.startingFatigue,
       startingPhase: data.startingPhase,
       responseBudget: data.responseBudget,
