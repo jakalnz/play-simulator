@@ -214,8 +214,8 @@
 
       <div class="chart-panel panel">
         <div class="hud-toggle-row">
-          <button id="toggle-hud-btn" class="touch-target hud-toggle-btn" type="button" aria-pressed="false" aria-expanded="false" aria-label="Show HUD" title="Show HUD">🎮</button>
-          <div class="hud-panel" id="hud-panel">
+          <button id="toggle-hud-btn" class="touch-target hud-toggle-btn" type="button" aria-pressed="true" aria-expanded="true" aria-label="Hide HUD" title="Hide HUD">🎮</button>
+          <div class="hud-panel is-open" id="hud-panel">
             <div class="hud-panel__inner">
               <div class="hud-panel__grid">
                 <div class="hud-stat">
@@ -299,7 +299,7 @@
           <button id="store-btn" class="touch-target">Store (S)</button>
           <button id="delete-point-btn" class="touch-target" title="Delete the stored point at the current ear/mode/frequency/masking">Del</button>
         </div>
-        <details class="visual-details" id="visual-details" open>
+        <details class="visual-details" id="visual-details">
           <summary>Visual — Cochlea Levels (hint)</summary>
           <table class="visual-table">
             <thead>
@@ -345,7 +345,7 @@
           </div>
         </div>
 
-        <div class="hints-status" id="hints-status-flag" style="grid-row: r8;">Hints: ON</div>
+        <div class="hints-status" id="hints-status-flag" style="grid-row: r8;">Hints: OFF</div>
       </div>
 
       <div class="app-footer panel" id="main-top-controls">
@@ -354,7 +354,7 @@
         </label>
         <button id="direction-switch" class="switch-btn" type="button" aria-pressed="true">Up = Louder</button>
         <button id="sound-switch" class="switch-btn" type="button" aria-pressed="true">Tone: On</button>
-        <button id="hints-switch" class="switch-btn" type="button" aria-pressed="true">Hints: On</button>
+        <button id="hints-switch" class="switch-btn" type="button" aria-pressed="false">Hints: Off</button>
         <button id="toggle-state-panel-btn" class="switch-btn state-toggle-btn" type="button" aria-pressed="false">👁 Show state panel</button>
         <a id="change-case-link" class="switch-btn" href="index.html" hidden>← Change case</a>
       </div>

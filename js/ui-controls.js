@@ -24,7 +24,7 @@
 
   function wireUi({ engine, patientModel, dom, resolveResponse, onInteractOption }) {
     let soundOn = true;
-    let hintsOn = true;
+    let hintsOn = false;
     let examLocked = false;
     let isPresenting = false;
     const tonePlayer = createTonePlayer();
