@@ -82,6 +82,8 @@
   .audiogram-canvas-wrap canvas { width: 100%; height: 100%; display: block; background: var(--color-panel, #fff); border: 1px solid var(--color-border, #d8dadf); border-radius: 8px; }
   .phase-toggle-row { display: flex; align-items: center; gap: 0.6rem; margin: 0.75rem 0; }
   .phase-toggle-row .toggle-group button { padding: 0.5rem 1.1rem; }
+  .assist-toggle-row { margin: -0.25rem 0 0.75rem 0; }
+  .assist-toggle-row button { padding: 0.5rem 1.1rem; }
   .state-toggle-btn { font-size: 0.85rem; }
   .student-state-panel { margin: 0.75rem 0; padding: 1rem; border: 1px solid #d8dadf; border-radius: 8px; background: #fbfbfb; }
   .student-state-panel[hidden] { display: none; }
@@ -279,15 +281,15 @@
             <button data-phase="conditioning">Conditioning</button>
             <button data-phase="testing">Testing</button>
           </div>
-          <div class="toggle-group primary-toggle" role="group" aria-label="Conditioning assist level" id="assist-toggle" style="display:none;">
-            <button data-assist="full">Full Assist</button>
-            <button data-assist="partial">Partial Assist</button>
-          </div>
           <button id="view-summary-btn" class="touch-target">View Summary</button>
           <button id="end-session-btn" class="touch-target">End Session</button>
         </div>
+        <div class="toggle-group primary-toggle assist-toggle-row" role="group" aria-label="Conditioning assist level" id="assist-toggle" style="display:none;">
+          <button data-assist="full">Full Assist</button>
+          <button data-assist="partial">Partial Assist</button>
+        </div>
 
-        <div class="interact-row">
+        <div class="interact-row" id="interact-row">
           <div class="interact-palette" id="interact-palette"></div>
         </div>
         <div class="feedback-flash" id="feedback-flash"></div>
@@ -766,6 +768,7 @@
     const phaseToggleButtons = [...document.querySelectorAll('#phase-toggle [data-phase]')];
     const assistToggleEl = document.getElementById('assist-toggle');
     const assistToggleButtons = [...document.querySelectorAll('#assist-toggle [data-assist]')];
+    const interactRowEl = document.getElementById('interact-row');
 
     function refreshPhaseToggle() {
       phaseToggleButtons.forEach((btn) => {
@@ -774,12 +777,14 @@
       refreshAssistToggle();
     }
 
-    // The assist-level toggle only makes sense during conditioning, and
-    // only for cases on a benji video set (legacy manifest has no
-    // full/partial-assist clip distinction).
+    // Conditioning shows the Full/Partial Assist toggle in place of the
+    // (otherwise inert — see resolveInteraction()'s pendingEvents-only
+    // resolution) feedback buttons; testing swaps back to the feedback
+    // buttons and hides the assist toggle.
     function refreshAssistToggle() {
-      const show = state.phase === 'conditioning' && !!activeVideoSet();
-      assistToggleEl.style.display = show ? '' : 'none';
+      const conditioning = state.phase === 'conditioning';
+      assistToggleEl.style.display = conditioning ? '' : 'none';
+      interactRowEl.style.display = conditioning ? 'none' : '';
       assistToggleButtons.forEach((btn) => {
         btn.setAttribute('aria-pressed', String(btn.dataset.assist === state.assistLevel));
       });
