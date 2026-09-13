@@ -61,6 +61,8 @@
   .hud-badges { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
   .hud-badge { font-size: 0.75rem; padding: 0.15rem 0.5rem; border-radius: 999px; background: #eee; color: #444; }
   .hud-badge.warn { background: #fde3e3; color: #b30000; }
+  .hud-badge--clickable { font: inherit; border: none; cursor: pointer; }
+  .hud-badge--clickable:hover { background: #ddd; }
 
   a.switch-btn { text-decoration: none; display: inline-flex; align-items: center; }
 
@@ -236,7 +238,9 @@
                 </div>
                 <div class="hud-stat">
                   <span class="hud-stat__label"><span>Game</span></span>
-                  <div class="hud-badges"><span class="hud-badge" id="hud-active-game-badge">—</span></div>
+                  <div class="hud-badges">
+                    <button type="button" class="hud-badge hud-badge--clickable" id="hud-active-game-badge" title="Click to switch game">—</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1323,11 +1327,28 @@
 
     function maybeSwitchGame() {
       if (trialCount > 0 && trialCount % GAME_SWITCH_EVERY === 0) {
-        gameIdx = (gameIdx + 1) % ModelConfig.games.length;
-        activeGame = ModelConfig.games[gameIdx];
-        state = ChildModel.switchGame(state, activeGame);
+        setActiveGame((gameIdx + 1) % ModelConfig.games.length);
       }
     }
+
+    // Shared by the automatic 35-trial rotation above and the clinician's
+    // manual click on the HUD's Game badge below — both just move gameIdx
+    // and hand the new game to ChildModel.switchGame().
+    function setActiveGame(newGameIdx) {
+      gameIdx = newGameIdx;
+      activeGame = ModelConfig.games[gameIdx];
+      state = ChildModel.switchGame(state, activeGame);
+    }
+
+    // Manual game switch: clicking the HUD's Game badge cycles cars ->
+    // horses -> marbles -> cars, independent of the automatic
+    // every-35-trials rotation (maybeSwitchGame() keeps running on its own
+    // schedule regardless of manual clicks in between).
+    hudActiveGameBadge.addEventListener('click', () => {
+      if (!state) return;
+      setActiveGame((gameIdx + 1) % ModelConfig.games.length);
+      updateReadout();
+    });
 
     function maybeEndConditioning() {
       if (state.phase === 'conditioning' && trialCount + 1 > CONDITIONING_TRIALS) {
