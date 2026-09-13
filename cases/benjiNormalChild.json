@@ -12,8 +12,8 @@
   "falsePositiveSusceptibility": 1,
   "videoSet": "benji",
   "games": {
-    "cars": { "baseResponseLevel": 70, "conditioningGainRate": 1.1, "startingConditioning": 10 },
-    "horses": { "baseResponseLevel": 60, "conditioningGainRate": 0.9, "startingConditioning": 5 },
-    "marbles": { "baseResponseLevel": 55, "conditioningGainRate": 0.8, "startingConditioning": 0 }
+    "cars": { "baseResponseLevel": 70, "conditioningGainRate": 1.1, "startingConditioning": 45 },
+    "horses": { "baseResponseLevel": 60, "conditioningGainRate": 0.9, "startingConditioning": 45 },
+    "marbles": { "baseResponseLevel": 55, "conditioningGainRate": 0.8, "startingConditioning": 45 }
   }
 }
