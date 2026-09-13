@@ -1,0 +1,23 @@
+{
+  "name": "Benji",
+  "vignette": "4yo, right ear normal, mild flat conductive loss (40dB air-bone gap) in the left ear from recurrent middle-ear fluid. Conditions quickly and stays engaged. Real-child video (Benji).",
+  "trueThreshold": {
+    "right": { "500": 10, "1000": 10, "2000": 10, "4000": 10 },
+    "left": { "500": 10, "1000": 10, "2000": 10, "4000": 10 }
+  },
+  "conductiveLoss": {
+    "right": { "500": 0, "1000": 0, "2000": 0, "4000": 0 },
+    "left": { "500": 40, "1000": 40, "2000": 40, "4000": 40 }
+  },
+  "startingFatigue": 0,
+  "startingPhase": "conditioning",
+  "responseBudget": 120,
+  "engagementDecayRate": 1,
+  "falsePositiveSusceptibility": 1,
+  "videoSet": "benji",
+  "games": {
+    "cars": { "baseResponseLevel": 70, "conditioningGainRate": 1.1, "startingConditioning": 10 },
+    "horses": { "baseResponseLevel": 60, "conditioningGainRate": 0.9, "startingConditioning": 5 },
+    "marbles": { "baseResponseLevel": 55, "conditioningGainRate": 0.8, "startingConditioning": 0 }
+  }
+}
