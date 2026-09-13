@@ -69,23 +69,19 @@ function pickBenjiIdle(videoSet, transducerGroup, excludeLetter) {
   }
   const candidates = all.length > 1 ? all.filter((p) => p.letter !== excludeLetter) : all;
   const pick = candidates[Math.floor(Math.random() * candidates.length)];
-  return {
-    letter: pick.letter,
-    url: benjiClipUrl(videoSet, pick.idleFile),
-    durationMs: pick.idleDurationMs,
-  };
+  return { letter: pick.letter, url: benjiClipUrl(videoSet, pick.idleFile) };
 }
 
-// Looks up the response clip paired with the given idle letter.
+// Looks up the response clip paired with the given idle letter. Real clip
+// length isn't tracked here — trial-runner.html reads it directly off the
+// <video> element once loaded, so swapping/re-cutting a file needs no
+// manifest edit.
 function benjiResponseFor(videoSet, letter) {
   const pair = videoSet.pairs.find((p) => p.letter === letter);
   if (!pair) {
     throw new Error(`No Benji pair found for letter "${letter}"`);
   }
-  return {
-    url: benjiClipUrl(videoSet, pair.responseFile),
-    durationMs: pair.responseDurationMs,
-  };
+  return { url: benjiClipUrl(videoSet, pair.responseFile) };
 }
 
 // confidence: 'low' | 'high'
@@ -94,17 +90,15 @@ function benjiSpontaneousFor(videoSet, confidence) {
   if (!clip) {
     throw new Error(`No Benji spontaneous clip found for confidence "${confidence}"`);
   }
-  return { url: benjiClipUrl(videoSet, clip.file), durationMs: clip.durationMs };
+  return { url: benjiClipUrl(videoSet, clip.file) };
 }
 
 function benjiConditioningIdle(videoSet) {
-  const c = videoSet.conditioning;
-  return { url: benjiClipUrl(videoSet, c.idleFile), durationMs: c.idleDurationMs };
+  return { url: benjiClipUrl(videoSet, videoSet.conditioning.idleFile) };
 }
 
 function benjiConditioningAssist(videoSet) {
-  const c = videoSet.conditioning;
-  return { url: benjiClipUrl(videoSet, c.assistFile), durationMs: c.assistDurationMs };
+  return { url: benjiClipUrl(videoSet, videoSet.conditioning.assistFile) };
 }
 
 const Scheduler = {

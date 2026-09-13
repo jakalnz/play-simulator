@@ -1210,25 +1210,24 @@
 
     // Resolves a benji video-set clip plan for the current trial outcome +
     // phase/assist-level, in the plan shape playClip() expects
-    // ({ variantUrl, durationMs }). Returns null when no clip should play
-    // (testing-phase no_response — footage stays on whatever's idling).
+    // ({ variantUrl }) — no durationMs: playClip() measures the real clip
+    // length off the video element once it's loaded. Returns null when no
+    // clip should play (testing-phase no_response — footage stays on
+    // whatever's idling).
     function benjiPlanFor(videoSet, trialResult, isConditioning) {
       if (isConditioning) {
         if (state.assistLevel === 'full') {
-          const clip = Scheduler.benjiConditioningAssist(videoSet);
-          return { variantUrl: clip.url, durationMs: clip.durationMs };
+          return { variantUrl: Scheduler.benjiConditioningAssist(videoSet).url };
         }
         const g = state.games[activeGame];
         const confidence = g.conditioningLevel >= ModelConfig.assistConfidenceThreshold ? 'high' : 'low';
-        const clip = Scheduler.benjiSpontaneousFor(videoSet, confidence);
-        return { variantUrl: clip.url, durationMs: clip.durationMs };
+        return { variantUrl: Scheduler.benjiSpontaneousFor(videoSet, confidence).url };
       }
       if (trialResult.outcome === 'no_response') return null;
       // genuine_response or false_positive: play the response clip paired
       // with whichever idle letter was last showing, regardless of which
       // of the two outcomes it was — a response is a response, visually.
-      const clip = Scheduler.benjiResponseFor(videoSet, lastIdleLetter);
-      return { variantUrl: clip.url, durationMs: clip.durationMs };
+      return { variantUrl: Scheduler.benjiResponseFor(videoSet, lastIdleLetter).url };
     }
 
     // Conditioning phase: skip the Accept/Not-accept judgement entirely and
@@ -1349,8 +1348,9 @@
     let spontaneousCheckTimer = null;
 
     function idleLoopCheckIntervalMs() {
+      if (activeVideoSet()) return FALLBACK_CLIP_DURATION_MS;
       const loops = manifest.idleLoops;
-      return (loops && loops[0] && loops[0].durationMs) || 4000;
+      return (loops && loops[0] && loops[0].durationMs) || FALLBACK_CLIP_DURATION_MS;
     }
 
     function scheduleSpontaneousCheck() {
@@ -1367,7 +1367,7 @@
         // standby element (activeVideo.loop is still stale/true at this
         // point since that swap hasn't resolved yet).
         if (!triggered && activeVideo.loop && !activeVideo.paused) {
-          loadAndSwap(Scheduler.pickIdleLoopUrl(manifest), { loop: true });
+          loadAndSwap(nextIdleClipUrl(), { loop: true });
           scheduleSpontaneousCheck();
         }
       }, idleLoopCheckIntervalMs());
@@ -1416,6 +1416,23 @@
       playClip(plan, () => { setPresentEnabled(true); armResolutionWindow(event); });
     }
 
+    // Picks the next idle-loop URL, tracking lastIdleLetter for benji video
+    // sets along the way. Shared by playIdleLoop() and the periodic
+    // re-cycle in scheduleSpontaneousCheck() so both respect the same
+    // transducer-group/assist-level rules instead of one of them falling
+    // back to the legacy generic idle pool.
+    function nextIdleClipUrl() {
+      const videoSet = activeVideoSet();
+      if (!videoSet) return Scheduler.pickIdleLoopUrl(manifest);
+      if (state.phase === 'conditioning' && state.assistLevel === 'full') {
+        lastIdleLetter = null;
+        return Scheduler.benjiConditioningIdle(videoSet).url;
+      }
+      const idle = Scheduler.pickBenjiIdle(videoSet, activeTransducerGroup(), lastIdleLetter);
+      lastIdleLetter = idle.letter;
+      return idle.url;
+    }
+
     // force=true bypasses the "already idling" short-circuit — used when a
     // phase/assist-level/transducer switch needs the idle footage to
     // change even though a loop is already playing (e.g. switching from
@@ -1427,35 +1444,42 @@
       // return-to-idle.
       if (!force && activeVideo.loop && !activeVideo.paused) return;
       clearTimeout(revertTimer);
-
-      const videoSet = activeVideoSet();
-      if (videoSet && state && state.phase === 'conditioning' && state.assistLevel === 'full') {
-        lastIdleLetter = null;
-        loadAndSwap(Scheduler.benjiConditioningIdle(videoSet).url, { loop: true });
-      } else if (videoSet) {
-        const idle = Scheduler.pickBenjiIdle(videoSet, activeTransducerGroup(), lastIdleLetter);
-        lastIdleLetter = idle.letter;
-        loadAndSwap(idle.url, { loop: true });
-      } else {
-        loadAndSwap(Scheduler.pickIdleLoopUrl(manifest), { loop: true });
-      }
+      loadAndSwap(nextIdleClipUrl(), { loop: true });
       scheduleSpontaneousCheck();
+    }
+
+    // Used when a clip's real length can't be read off the element (e.g.
+    // metadata not yet available) and the plan carries no manifest
+    // durationMs fallback of its own.
+    const FALLBACK_CLIP_DURATION_MS = 4000;
+
+    function measuredDurationMs(el, fallbackMs) {
+      const d = el.duration;
+      return Number.isFinite(d) && d > 0 ? d * 1000 : fallbackMs;
     }
 
     function playClip(plan, onFinished) {
       clearTimeout(spontaneousCheckTimer);
-      loadAndSwap(plan.variantUrl, { loop: false });
-
       clearTimeout(revertTimer);
-      // plan.durationMs is the authoritative minimum display time — some
-      // source files run shorter than their declared durationMs, so an
-      // 'ended' listener would revert (and cut to the idle loop) before the
-      // full duration has shown. If the file ends early, it just holds on
-      // its last frame until the timer below fires.
-      revertTimer = setTimeout(() => {
-        playIdleLoop();
-        if (onFinished) onFinished();
-      }, plan.durationMs);
+      // Legacy manifest clips still carry an explicit plan.durationMs — some
+      // of those placeholder source files run shorter than their declared
+      // duration, so a hold-on-last-frame minimum was needed (see below).
+      // Benji clips omit durationMs entirely; for those, the real clip
+      // length is read directly off the video element once it's loaded,
+      // so there's nothing to hand-maintain when clips are edited/swapped.
+      loadAndSwap(plan.variantUrl, { loop: false }, () => {
+        const durationMs = plan.durationMs != null
+          ? plan.durationMs
+          : measuredDurationMs(activeVideo, FALLBACK_CLIP_DURATION_MS);
+        // durationMs here is the authoritative minimum display time — if a
+        // source file's real length ever comes in shorter (or duration
+        // can't be read yet), this just holds the last frame on screen
+        // until the timer fires rather than cutting away early.
+        revertTimer = setTimeout(() => {
+          playIdleLoop();
+          if (onFinished) onFinished();
+        }, durationMs);
+      });
     }
 
     // ------------------------------------------------------------------
