@@ -81,5 +81,28 @@
       "file": "idle_loop_03.mp4",
       "durationMs": 4000
     }
-  ]
+  ],
+  "videoSets": {
+    "benji": {
+      "baseUrl": "https://pub-3c34b9b7d48143928912374f895ee51c.r2.dev",
+      "pairs": [
+        { "letter": "A", "transducerGroup": "insert", "idleFile": "A-idle-inserts.mp4", "responseFile": "A-response-inserts.mp4", "idleDurationMs": 4000, "responseDurationMs": 4000 },
+        { "letter": "B", "transducerGroup": "insert", "idleFile": "B-idle-inserts.mp4", "responseFile": "B-response-inserts.mp4", "idleDurationMs": 4000, "responseDurationMs": 4000 },
+        { "letter": "C", "transducerGroup": "insert", "idleFile": "C-idle-inserts.mp4", "responseFile": "C-response-inserts.mp4", "idleDurationMs": 4000, "responseDurationMs": 4000 },
+        { "letter": "D", "transducerGroup": "BC", "idleFile": "D-idle-BC.mp4", "responseFile": "D-response-BC.mp4", "idleDurationMs": 4000, "responseDurationMs": 4000 },
+        { "letter": "E", "transducerGroup": "BC", "idleFile": "E-idle-BC.mp4", "responseFile": "E-response-BC.mp4", "idleDurationMs": 4000, "responseDurationMs": 4000 },
+        { "letter": "F", "transducerGroup": "BC", "idleFile": "F-idle-BC.mp4", "responseFile": "F-response-BC.mp4", "idleDurationMs": 4000, "responseDurationMs": 4000 }
+      ],
+      "spontaneous": {
+        "low": { "file": "spontaneous_response_low-confidence-inserts.mp4", "durationMs": 4000 },
+        "high": { "file": "spontanous_response_high-confidence-inserts.mp4", "durationMs": 4000 }
+      },
+      "conditioning": {
+        "idleFile": "conditioning_idle.mp4",
+        "assistFile": "conditioning.mp4",
+        "idleDurationMs": 4000,
+        "assistDurationMs": 4000
+      }
+    }
+  }
 }

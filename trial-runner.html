@@ -275,6 +275,10 @@
             <button data-phase="conditioning">Conditioning</button>
             <button data-phase="testing">Testing</button>
           </div>
+          <div class="toggle-group primary-toggle" role="group" aria-label="Conditioning assist level" id="assist-toggle" style="display:none;">
+            <button data-assist="full">Full Assist</button>
+            <button data-assist="partial">Partial Assist</button>
+          </div>
           <button id="view-summary-btn" class="touch-target">View Summary</button>
           <button id="end-session-btn" class="touch-target">End Session</button>
         </div>
@@ -619,6 +623,19 @@
     let activeGame = null;
     let gameIdx = 0;
     let trialCount = 0;
+    let lastIdleLetter = null; // benji video sets only: letter of whichever idle pair is currently looping
+
+    // Resolves the active benji video set (manifest.videoSets[id]) for the
+    // current case, or null when the case isn't opted in (legacy manifest
+    // path applies).
+    function activeVideoSet() {
+      const id = currentCaseConfig && currentCaseConfig.videoSet;
+      return (id && manifest.videoSets && manifest.videoSets[id]) || null;
+    }
+
+    function activeTransducerGroup() {
+      return engine.getState().testMode === 'BC' ? 'BC' : 'insert';
+    }
 
     let clipTimer = null;
     let revertTimer = null;
@@ -743,10 +760,24 @@
     // Phase toggle (conditioning <-> testing)
     // ------------------------------------------------------------------
     const phaseToggleButtons = [...document.querySelectorAll('#phase-toggle [data-phase]')];
+    const assistToggleEl = document.getElementById('assist-toggle');
+    const assistToggleButtons = [...document.querySelectorAll('#assist-toggle [data-assist]')];
 
     function refreshPhaseToggle() {
       phaseToggleButtons.forEach((btn) => {
         btn.setAttribute('aria-pressed', String(btn.dataset.phase === state.phase));
+      });
+      refreshAssistToggle();
+    }
+
+    // The assist-level toggle only makes sense during conditioning, and
+    // only for cases on a benji video set (legacy manifest has no
+    // full/partial-assist clip distinction).
+    function refreshAssistToggle() {
+      const show = state.phase === 'conditioning' && !!activeVideoSet();
+      assistToggleEl.style.display = show ? '' : 'none';
+      assistToggleButtons.forEach((btn) => {
+        btn.setAttribute('aria-pressed', String(btn.dataset.assist === state.assistLevel));
       });
     }
 
@@ -760,10 +791,25 @@
       state.phase = phase;
       refreshPhaseToggle();
       updateReadout();
+      playIdleLoop(true);
+    }
+
+    // Always switchable (no gating on conditioningLevel or a presentation
+    // count) — the clinician's own judgement decides when the child looks
+    // ready for less assistance.
+    function setAssistLevel(level) {
+      if (!state || state.assistLevel === level) return;
+      state.assistLevel = level;
+      refreshAssistToggle();
+      updateReadout();
+      playIdleLoop(true);
     }
 
     phaseToggleButtons.forEach((btn) => {
       btn.addEventListener('click', () => setPhase(btn.dataset.phase));
+    });
+    assistToggleButtons.forEach((btn) => {
+      btn.addEventListener('click', () => setAssistLevel(btn.dataset.assist));
     });
 
     // ------------------------------------------------------------------
@@ -1128,9 +1174,6 @@
       // (see autoPairConditioning()). Testing phase plays whichever clip
       // matches the resolved ground truth, then arms that event's
       // resolution window once the clip finishes.
-      const token = isConditioning ? 'reinforcer_response' : mapOutcomeToToken(trialResult.outcome);
-      const effectiveManifest = buildEffectiveManifest(manifest, currentCaseConfig);
-      const plan = Scheduler.computeSchedulingPlan(effectiveManifest, token, trialResult.timingOffsetMs);
       const onClipFinished = isConditioning
         ? () => autoPairConditioning(trialResult)
         : () => { setPresentEnabled(true); armResolutionWindow(event); };
@@ -1138,6 +1181,24 @@
       clearTimeout(clipTimer);
       clearTimeout(onsetTimer);
       setPresentEnabled(false);
+
+      const videoSet = activeVideoSet();
+      if (videoSet) {
+        const plan = benjiPlanFor(videoSet, trialResult, isConditioning);
+        if (!plan) {
+          // no_response in testing: leave the idle footage untouched, no
+          // clip to play — resolve immediately rather than waiting on a
+          // clip that never starts.
+          onClipFinished();
+        } else {
+          playClip(plan, onClipFinished);
+        }
+        return trialResult;
+      }
+
+      const token = isConditioning ? 'reinforcer_response' : mapOutcomeToToken(trialResult.outcome);
+      const effectiveManifest = buildEffectiveManifest(manifest, currentCaseConfig);
+      const plan = Scheduler.computeSchedulingPlan(effectiveManifest, token, trialResult.timingOffsetMs);
       if (plan.playAtMs <= 0) {
         playClip(plan, onClipFinished);
       } else {
@@ -1145,6 +1206,29 @@
       }
 
       return trialResult;
+    }
+
+    // Resolves a benji video-set clip plan for the current trial outcome +
+    // phase/assist-level, in the plan shape playClip() expects
+    // ({ variantUrl, durationMs }). Returns null when no clip should play
+    // (testing-phase no_response — footage stays on whatever's idling).
+    function benjiPlanFor(videoSet, trialResult, isConditioning) {
+      if (isConditioning) {
+        if (state.assistLevel === 'full') {
+          const clip = Scheduler.benjiConditioningAssist(videoSet);
+          return { variantUrl: clip.url, durationMs: clip.durationMs };
+        }
+        const g = state.games[activeGame];
+        const confidence = g.conditioningLevel >= ModelConfig.assistConfidenceThreshold ? 'high' : 'low';
+        const clip = Scheduler.benjiSpontaneousFor(videoSet, confidence);
+        return { variantUrl: clip.url, durationMs: clip.durationMs };
+      }
+      if (trialResult.outcome === 'no_response') return null;
+      // genuine_response or false_positive: play the response clip paired
+      // with whichever idle letter was last showing, regardless of which
+      // of the two outcomes it was — a response is a response, visually.
+      const clip = Scheduler.benjiResponseFor(videoSet, lastIdleLetter);
+      return { variantUrl: clip.url, durationMs: clip.durationMs };
     }
 
     // Conditioning phase: skip the Accept/Not-accept judgement entirely and
@@ -1182,11 +1266,13 @@
       activeGame = ModelConfig.games[0];
       gameIdx = 0;
       trialCount = 0;
+      lastIdleLetter = null;
       logEl.textContent = '';
       refreshPhaseToggle();
       updateReadout();
       if (uiControls) uiControls.refreshDisplayBar();
       if (engine) engine.clearStoredPoints();
+      if (manifest) playIdleLoop(true);
 
       // Resetting abandons the session — discard any open windows rather
       // than logging them (matches the old pendingTrial = null behavior).
@@ -1315,9 +1401,14 @@
       };
       pendingEvents.push(event);
 
-      const token = mapOutcomeToToken(trialResult.outcome);
-      const effectiveManifest = buildEffectiveManifest(manifest, currentCaseConfig);
-      const plan = Scheduler.computeSchedulingPlan(effectiveManifest, token, trialResult.timingOffsetMs);
+      const videoSet = activeVideoSet();
+      const plan = videoSet
+        ? benjiPlanFor(videoSet, trialResult, false)
+        : Scheduler.computeSchedulingPlan(
+            buildEffectiveManifest(manifest, currentCaseConfig),
+            mapOutcomeToToken(trialResult.outcome),
+            trialResult.timingOffsetMs
+          );
 
       clearTimeout(clipTimer);
       clearTimeout(onsetTimer);
@@ -1325,14 +1416,29 @@
       playClip(plan, () => { setPresentEnabled(true); armResolutionWindow(event); });
     }
 
-    function playIdleLoop() {
+    // force=true bypasses the "already idling" short-circuit — used when a
+    // phase/assist-level/transducer switch needs the idle footage to
+    // change even though a loop is already playing (e.g. switching from
+    // conditioning_idle to the paired A-F idle set).
+    function playIdleLoop(force) {
       // activeVideo.loop is only ever true while an idle-loop clip is
       // playing, so it doubles as "already idling" — a fixed idleLoopUrl
       // comparison wouldn't work once idle footage is picked randomly per
       // return-to-idle.
-      if (activeVideo.loop && !activeVideo.paused) return;
+      if (!force && activeVideo.loop && !activeVideo.paused) return;
       clearTimeout(revertTimer);
-      loadAndSwap(Scheduler.pickIdleLoopUrl(manifest), { loop: true });
+
+      const videoSet = activeVideoSet();
+      if (videoSet && state && state.phase === 'conditioning' && state.assistLevel === 'full') {
+        lastIdleLetter = null;
+        loadAndSwap(Scheduler.benjiConditioningIdle(videoSet).url, { loop: true });
+      } else if (videoSet) {
+        const idle = Scheduler.pickBenjiIdle(videoSet, activeTransducerGroup(), lastIdleLetter);
+        lastIdleLetter = idle.letter;
+        loadAndSwap(idle.url, { loop: true });
+      } else {
+        loadAndSwap(Scheduler.pickIdleLoopUrl(manifest), { loop: true });
+      }
       scheduleSpontaneousCheck();
     }
 

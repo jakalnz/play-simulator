@@ -14,6 +14,7 @@ const CONFIG = {
   conditioningWithholdPenalty: 1, // extra fixed penalty applied on ANY withhold action, stacks
   fastDecayMultiplier: 3, // multiplier applied to conditioning decay once falsePositiveRatio is high
   unconditionedFloor: 15, // conditioningLevel below this (for active game) => isUnconditioned flag
+  assistConfidenceThreshold: 50, // conditioningLevel >= this => "high confidence" clip in partial-assist conditioning, else "low confidence"
 
   // --- false positives / rolling ratio ---
   fpRollingWindow: 6, // number of recent testing-phase trials used for falsePositiveRatio
@@ -124,6 +125,7 @@ function createChildState(caseConfig) {
     reinforcerNovelty,
     lastUsedIcon: null,
     phase: caseConfig.startingPhase || 'conditioning',
+    assistLevel: 'full', // conditioning-phase only: 'full' (clinician-assist clip) or 'partial' (paired clips + confidence-graded response)
     trialCount: 0,
     trialsSinceReinforcement: 0,
     consecutiveWithholds: 0,
@@ -290,17 +292,22 @@ function runTrial(state, stimulus, activeGame) {
 }
 
 // ============================================================================
-// Conditioning phase resolution (always reinforced, no scoring)
+// Conditioning phase resolution (always reinforced visually, no scoring —
+// but the conditioningLevel gain itself only lands when the stimulus was
+// actually audible, so an inaudible presentation still shows the
+// reinforcement clip without teaching the child anything).
 // ============================================================================
 function applyConditioningPhase(state, trialResult, activeGame) {
   const s = deepClone(state);
   const g = s.games[activeGame];
   const fatigueCap = 100 - s.fatigueLevel * 0.5;
-  g.conditioningLevel = clamp(
-    g.conditioningLevel + CONFIG.conditioningGainConditioningPhase * g.conditioningGainRate,
-    0,
-    fatigueCap
-  );
+  if (trialResult.audible) {
+    g.conditioningLevel = clamp(
+      g.conditioningLevel + CONFIG.conditioningGainConditioningPhase * g.conditioningGainRate,
+      0,
+      fatigueCap
+    );
+  }
   s.trialsSinceReinforcement = 0;
   s.consecutiveWithholds = 0;
   return { state: s, action: 'reinforce' };

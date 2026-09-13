@@ -65,6 +65,7 @@
         marbles: { baseResponseLevel: 50, conditioningGainRate: 0.7, startingConditioning: 0 },
       },
       clipEligibility: {},
+      videoSet: null,
     };
   }
 

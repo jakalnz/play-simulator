@@ -14,6 +14,7 @@ const easyChild = {
   },
   startingFatigue: 0,
   startingPhase: 'conditioning',
+  videoSet: 'benji',
   games: {
     cars: { baseResponseLevel: 70, conditioningGainRate: 1.1, startingConditioning: 10 },
     horses: { baseResponseLevel: 60, conditioningGainRate: 0.9, startingConditioning: 5 },
