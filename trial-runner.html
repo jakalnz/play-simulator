@@ -1461,7 +1461,10 @@
     function nextIdleClipUrl() {
       const videoSet = activeVideoSet();
       if (!videoSet) return Scheduler.pickIdleLoopUrl(manifest);
-      if (state.phase === 'conditioning' && state.assistLevel === 'full') {
+      // Both assist levels idle on the same conditioning_idle clip —
+      // only the Present response differs (conditioning-assist clip vs
+      // confidence-graded spontaneous clip, see benjiPlanFor()).
+      if (state.phase === 'conditioning') {
         lastIdleLetter = null;
         return Scheduler.benjiConditioningIdle(videoSet).url;
       }
@@ -1471,9 +1474,9 @@
     }
 
     // force=true bypasses the "already idling" short-circuit — used when a
-    // phase/assist-level/transducer switch needs the idle footage to
-    // change even though a loop is already playing (e.g. switching from
-    // conditioning_idle to the paired A-F idle set).
+    // phase/transducer switch needs the idle footage to change even
+    // though a loop is already playing (e.g. testing's paired A-F idle
+    // set switching transducer group, or leaving conditioning entirely).
     function playIdleLoop(force) {
       // activeVideo.loop is only ever true while an idle-loop clip is
       // playing, so it doubles as "already idling" — a fixed idleLoopUrl
