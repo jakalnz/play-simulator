@@ -14,7 +14,7 @@
   .case-select-label { font-size: 0.85rem; }
   video { width: 100%; background: #000; display: block; }
   .video-stack { position: relative; }
-  .video-stack video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; }
+  .video-stack video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 300ms ease; }
   .video-stack video.is-visible { position: relative; opacity: 1; }
 
   /* Reward/redirect overlay — flows emoji across the central chart panel
@@ -667,6 +667,12 @@
     // call recognize it's stale and bail instead of corrupting state.
     let swapGeneration = 0;
 
+    // Matches the CSS transition on .video-stack video — the outgoing clip
+    // is left playing (not paused) for this long so it visibly cross-fades
+    // into the new one instead of freezing on its last frame the instant
+    // the swap happens.
+    const VIDEO_FADE_MS = 300;
+
     function loadAndSwap(url, { loop = false } = {}, onReady) {
       const el = standbyVideo;
       const myGeneration = ++swapGeneration;
@@ -678,12 +684,17 @@
         if (myGeneration !== swapGeneration || el !== standbyVideo) return;
         el.loop = loop;
         el.play().catch(() => {});
-        activeVideo.pause();
-        activeVideo.classList.remove('is-visible');
+        const outgoing = activeVideo;
+        outgoing.classList.remove('is-visible');
         el.classList.add('is-visible');
-        const prev = activeVideo;
         activeVideo = el;
-        standbyVideo = prev;
+        standbyVideo = outgoing;
+        // Keep the outgoing element playing until it's fully faded out,
+        // then pause it — pausing immediately would freeze it on its last
+        // frame for the whole fade instead of dissolving smoothly.
+        setTimeout(() => {
+          if (outgoing !== activeVideo) outgoing.pause();
+        }, VIDEO_FADE_MS);
         if (onReady) onReady();
       };
       el.addEventListener('canplay', finish);
