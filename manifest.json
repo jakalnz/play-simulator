@@ -85,6 +85,7 @@
   "videoSets": {
     "benji": {
       "baseUrl": "https://pub-3c34b9b7d48143928912374f895ee51c.r2.dev",
+      "version": 2,
       "pairs": [
         { "letter": "A", "transducerGroup": "insert", "idleFile": "A-idle-inserts.mp4", "responseFile": "A-response-inserts.mp4" },
         { "letter": "B", "transducerGroup": "insert", "idleFile": "B-idle-inserts.mp4", "responseFile": "B-response-inserts.mp4" },

@@ -56,8 +56,15 @@ function pickIdleLoopUrl(manifest) {
 // functions above.
 // ============================================================================
 
+// The optional `version` field on a video set is appended as a cache-busting
+// query param — R2's public r2.dev buckets sit behind Cloudflare's CDN,
+// which caches static file types like .mp4 at the edge independent of
+// browser cache and isn't invalidated just because the object at that
+// filename was overwritten. Bumping `version` after replacing a clip gives
+// it a fresh URL so there's nothing stale to purge.
 function benjiClipUrl(videoSet, file) {
-  return videoSet.baseUrl + '/' + encodeURIComponent(file);
+  const url = videoSet.baseUrl + '/' + encodeURIComponent(file);
+  return videoSet.version != null ? `${url}?v=${encodeURIComponent(videoSet.version)}` : url;
 }
 
 // Picks a random idle/response pair within the given transducer group,
