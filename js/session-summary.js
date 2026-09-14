@@ -36,7 +36,11 @@
 
     const byEar = {};
     const byFreq = {};
-    judged.forEach((e) => {
+    // Spontaneous (unprompted) false positives have no stimulus behind
+    // them at all (see childModel.js's rollSpontaneousResponse) - they
+    // still count toward the overall accuracy total above, just not
+    // toward a specific ear/frequency breakdown.
+    judged.filter((e) => e.stimulus).forEach((e) => {
       const ear = e.stimulus.ear;
       const freq = e.stimulus.freq;
       (byEar[ear] = byEar[ear] || []).push(e);
@@ -328,6 +332,7 @@
     // fabricate a point for an untested combination.
     const testedPairs = new Set();
     history.forEach((e) => {
+      if (!e.stimulus) return; // spontaneous events have no stimulus behind them
       testedPairs.add(`${e.stimulus.ear}|${e.stimulus.freq}`);
     });
     const reference = [];
