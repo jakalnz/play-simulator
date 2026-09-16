@@ -1386,7 +1386,12 @@
     let spontaneousCheckTimer = null;
 
     function idleLoopCheckIntervalMs() {
-      if (activeVideoSet()) return FALLBACK_CLIP_DURATION_MS;
+      // Benji idle clips carry no manifest durationMs (see playClip's
+      // comment above) — the currently-playing element's own real duration
+      // is the only source of truth, same as measuredDurationMs() uses for
+      // response clips. Without this, re-cycling on FALLBACK_CLIP_DURATION_MS
+      // cuts every idle loop longer than 4s short.
+      if (activeVideoSet()) return measuredDurationMs(activeVideo, FALLBACK_CLIP_DURATION_MS);
       const loops = manifest.idleLoops;
       return (loops && loops[0] && loops[0].durationMs) || FALLBACK_CLIP_DURATION_MS;
     }
