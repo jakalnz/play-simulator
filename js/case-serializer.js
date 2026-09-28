@@ -37,6 +37,7 @@
       falsePositiveSusceptibility: caseConfig.falsePositiveSusceptibility,
       games: caseConfig.games,
       clipEligibility: caseConfig.clipEligibility,
+      videoSet: caseConfig.videoSet || null,
     };
   }
 
@@ -84,6 +85,7 @@
       falsePositiveSusceptibility: data.falsePositiveSusceptibility,
       games: data.games,
       clipEligibility: data.clipEligibility,
+      videoSet: data.videoSet || null,
     };
 
     return childModelFactory ? childModelFactory(caseConfig) : caseConfig;

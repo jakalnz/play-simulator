@@ -26,11 +26,24 @@
     return decodeURIComponent(escape(atob(base64)));
   }
 
-  function buildShareUrl(hashKey, dataObj) {
+  // page: the page the link should open (default: the current page). Case
+  // links must open index.html, which is the page that reads #case=.
+  function buildShareUrl(hashKey, dataObj, page) {
     const encoded = toBase64Url(JSON.stringify(dataObj));
-    const url = new URL(window.location.href);
+    const url = new URL(page || window.location.href, window.location.href);
     url.hash = `${hashKey}=${encoded}`;
     return url.toString();
+  }
+
+  // Case link for index.html: the short js/case-codec.js format when the
+  // case fits it exactly, otherwise the full serializeCase() JSON.
+  function buildCaseShareUrl(caseConfig, { locked } = {}) {
+    if (window.CaseCodec && window.CaseCodec.canEncode(caseConfig)) {
+      const url = new URL('index.html', window.location.href);
+      url.hash = `case=${window.CaseCodec.encode(caseConfig, { locked })}`;
+      return url.toString();
+    }
+    return buildShareUrl('case', window.CaseSerializer.serializeCase(caseConfig, { locked }), 'index.html');
   }
 
   // Returns the parsed-but-unvalidated payload, or null if the hash doesn't
@@ -40,13 +53,14 @@
     const match = window.location.hash.match(re);
     if (!match) return null;
     try {
+      if (window.CaseCodec && match[1][0] === window.CaseCodec.PREFIX) return window.CaseCodec.decode(match[1]);
       return JSON.parse(fromBase64Url(match[1]));
     } catch (err) {
       return null;
     }
   }
 
-  const ShareLink = { toBase64Url, fromBase64Url, buildShareUrl, readShareUrl };
+  const ShareLink = { toBase64Url, fromBase64Url, buildShareUrl, buildCaseShareUrl, readShareUrl };
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = ShareLink;

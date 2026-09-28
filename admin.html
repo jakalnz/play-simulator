@@ -208,6 +208,7 @@
 <script src="js/case-threshold-editor.js"></script>
 <script src="js/obfuscate.js"></script>
 <script src="js/share-link.js"></script>
+<script src="js/case-codec.js"></script>
 <script src="js/json-io.js"></script>
 <script src="js/case-serializer.js"></script>
 <script>
@@ -518,8 +519,7 @@
       fieldsToDraft();
       shareStatus.classList.remove('status-msg--error');
       try {
-        const data = window.CaseSerializer.serializeCase(caseDraft, { locked: lockedCheckbox.checked });
-        const url = window.ShareLink.buildShareUrl('case', data);
+        const url = window.ShareLink.buildCaseShareUrl(caseDraft, { locked: lockedCheckbox.checked });
         await navigator.clipboard.writeText(url);
         shareStatus.textContent = 'Share link copied to clipboard.';
       } catch (err) {
